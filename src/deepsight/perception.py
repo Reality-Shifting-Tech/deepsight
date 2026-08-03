@@ -1,0 +1,236 @@
+"""Perception: scene sketching and the vision tool protocol.
+
+The orchestrator runs a *vision session*: the reasoning model (a
+text-only LLM) is handed a compact scene sketch plus tool definitions,
+and issues ``look`` / ``crop`` / ``ocr`` / ``zoom`` calls which the
+vision model answers with *targeted* passes. One sketch (~60-120 tokens)
+plus on-demand looks replaces the one-shot 300-500 token description —
+that token saving is the project's efficiency claim.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from typing import Any
+
+from .backends import OllamaVisionBackend, OpenAICompatibleVisionBackend
+from .cache import PerceptionCache
+
+VisionBackendType = OllamaVisionBackend | OpenAICompatibleVisionBackend
+
+SKETCH_PROMPT = (
+    "You are the perception module of a vision proxy. Analyze the image and "
+    "produce a COMPACT scene inventory. Be terse; this sketch is injected "
+    "into a reasoning model's context, so token efficiency matters.\n\n"
+    "Output EXACTLY this JSON shape (no markdown, no prose):\n"
+    '{"objects": ["brief list of visible objects/regions"], '
+    '"text": ["visible text fragments, transcribed"], '
+    '"layout": "one line describing spatial arrangement", '
+    '"palette": ["dominant colors"], '
+    '"anomalies": ["anything notable: errors, highlights, warnings"]}\n'
+    "If a list is empty, output []."
+)
+
+TOOL_REGION_PROMPT = (
+    "You are the perception module of a vision proxy. The reasoning model "
+    "asked a targeted question about a REGION of the image. Look ONLY at the "
+    "region shown and answer directly and tersely (1-2 sentences). Do not "
+    "mention the crop or the framing."
+)
+
+TOOL_OCR_PROMPT = (
+    "You are the perception module of a vision proxy. Transcribe ALL text "
+    "visible in the region shown, exactly as written, preserving line breaks. "
+    "Output only the transcription."
+)
+
+LOOK_RE = re.compile(r"\[LOOK\s+(-?\d+)\s*,\s*(-?\d+)\s*,\s*(\d+)\s*,\s*(\d+)\]", re.IGNORECASE)
+
+
+@dataclass(slots=True)
+class ToolDefinition:
+    """A vision tool exposed to the reasoning model."""
+
+    name: str
+    description: str
+    parameters: dict[str, Any]
+
+
+TOOL_DEFINITIONS: list[ToolDefinition] = [
+    ToolDefinition(
+        name="look",
+        description=(
+            "Inspect a rectangular region of the image (x, y, width, height as "
+            "percentages 0-100) and describe exactly what is there. Use for any "
+            "question about a specific part of the image."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "x": {"type": "number", "description": "left edge, % of width"},
+                "y": {"type": "number", "description": "top edge, % of height"},
+                "w": {"type": "number", "description": "width, % of image width"},
+                "h": {"type": "number", "description": "height, % of image height"},
+            },
+            "required": ["x", "y", "w", "h"],
+        },
+    ),
+    ToolDefinition(
+        name="ocr",
+        description=(
+            "Transcribe all text inside a rectangular region (percentages). Use "
+            "when exact text matters: error messages, labels, UI text."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "x": {"type": "number", "description": "left edge, % of width"},
+                "y": {"type": "number", "description": "top edge, % of height"},
+                "w": {"type": "number", "description": "width, % of image width"},
+                "h": {"type": "number", "description": "height, % of image height"},
+            },
+            "required": ["x", "y", "w", "h"],
+        },
+    ),
+    ToolDefinition(
+        name="zoom",
+        description=(
+            "Zoom into a rectangular region (percentages) for a closer look at "
+            "small details. The region is upscaled before the vision pass."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "x": {"type": "number", "description": "left edge, % of width"},
+                "y": {"type": "number", "description": "top edge, % of height"},
+                "w": {"type": "number", "description": "width, % of image width"},
+                "h": {"type": "number", "description": "height, % of image height"},
+            },
+            "required": ["x", "y", "w", "h"],
+        },
+    ),
+]
+
+
+class Perception:
+    """Encapsulates image handling, sketch generation, and tool execution.
+
+    Every vision call is routed through :class:`PerceptionCache`, so
+    repeated questions about the same region cost zero tokens.
+    """
+
+    def __init__(
+        self,
+        vision: VisionBackendType,
+        cache: PerceptionCache | None = None,
+        sketch_enabled: bool = True,
+    ) -> None:
+        self.vision = vision
+        self.cache = cache or PerceptionCache()
+        self.sketch_enabled = sketch_enabled
+        self.total_prompt_tokens = 0
+        self.total_completion_tokens = 0
+        self.cache_hits = 0
+
+    # -- image -----------------------------------------------------------------
+
+    def _region_bytes(
+        self, image: Any, x: float, y: float, w: float, h: float, zoom: bool = False
+    ) -> tuple[bytes, tuple[int, int, int, int] | None]:
+        """Crop a percentage region from a PIL image, optionally upscaling."""
+        from PIL import Image
+
+        img: Image.Image = image
+        iw, ih = img.size
+        box = (
+            max(0, int(x / 100 * iw)),
+            max(0, int(y / 100 * ih)),
+            min(iw, int((x + w) / 100 * iw)),
+            min(ih, int((y + h) / 100 * ih)),
+        )
+        if box[2] <= box[0] or box[3] <= box[1]:
+            box = (0, 0, iw, ih)
+        crop = img.crop(box)
+        if zoom and max(crop.size) < 512:
+            scale = max(1, 512 // max(crop.size))
+            crop = crop.resize(
+                (crop.width * scale, crop.height * scale), Image.Resampling.LANCZOS
+            )
+        import io
+
+        buf = io.BytesIO()
+        crop.save(buf, format="PNG")
+        return buf.getvalue(), box
+
+    # -- calls ------------------------------------------------------------------
+
+    def _ask(
+        self, prompt: str, image_bytes: bytes, kind: str, region: tuple[int, int, int, int] | None
+    ) -> tuple[str, bool]:
+        """Ask the vision model, honoring the cache. Returns (text, cache_hit)."""
+        if self.cache is not None:
+            hit = self.cache.get(self.cache.image_hash(image_bytes), region, kind)
+            if hit is not None:
+                self.cache_hits += 1
+                return hit, True
+        result = self.vision.ask(prompt, image_bytes)
+        self.total_prompt_tokens += result.prompt_tokens
+        self.total_completion_tokens += result.completion_tokens
+        if self.cache is not None:
+            self.cache.put(self.cache.image_hash(image_bytes), region, kind, result.text)
+        return result.text, False
+
+    def sketch(self, image: Any) -> str:
+        """Produce the compact scene inventory JSON (or '' if disabled)."""
+        if not self.sketch_enabled:
+            return ""
+        import io
+
+        buf = io.BytesIO()
+        image.save(buf, format="PNG")
+        text, _ = self._ask(SKETCH_PROMPT, buf.getvalue(), "sketch", None)
+        return text
+
+    # -- tools ------------------------------------------------------------------
+
+    def execute(self, name: str, args: dict[str, Any], image: Any) -> str:
+        """Execute one vision tool call against the image."""
+        if name not in {"look", "ocr", "zoom"}:
+            return f"unknown tool: {name}"
+        x = float(args.get("x", 0))
+        y = float(args.get("y", 0))
+        w = float(args.get("w", 100))
+        h = float(args.get("h", 100))
+        zoom = name == "zoom"
+        region_bytes, box = self._region_bytes(image, x, y, w, h, zoom=zoom)
+        if name == "ocr":
+            text, _ = self._ask(TOOL_OCR_PROMPT, region_bytes, "ocr", box)
+            return f"OCR of region ({x:.0f}%,{y:.0f}%,{w:.0f}%,{h:.0f}%): {text}"
+        prompt = TOOL_REGION_PROMPT + f"\nRegion: x={x:.0f}%, y={y:.0f}%, w={w:.0f}%, h={h:.0f}%."
+        text, _ = self._ask(prompt, region_bytes, name, box)
+        return f"{name} region ({x:.0f}%,{y:.0f}%,{w:.0f}%,{h:.0f}%): {text}"  # noqa: E501
+
+    def parse_text_markers(self, content: str) -> list[tuple[str, dict[str, Any]]]:
+        """Parse ``[LOOK x,y,w,h]`` markers from a tool-less model's output."""
+        calls: list[tuple[str, dict[str, Any]]] = []
+        for m in LOOK_RE.finditer(content):
+            calls.append(
+                (
+                    "look",
+                    {
+                        "x": int(m.group(1)),
+                        "y": int(m.group(2)),
+                        "w": int(m.group(3)),
+                        "h": int(m.group(4)),
+                    },
+                )
+            )
+        return calls
+
+    @property
+    def usage(self) -> dict[str, int]:
+        return {
+            "prompt_tokens": self.total_prompt_tokens,
+            "completion_tokens": self.total_completion_tokens,
+        }

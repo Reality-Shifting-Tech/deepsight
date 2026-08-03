@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+wheels/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.coverage.*
+*.log
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Bench output
+bench/results*.json
+
+# macOS
+.DS_Store
+
+# Editors
+.idea/
+.vscode/
+*.swp
