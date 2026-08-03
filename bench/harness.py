@@ -122,6 +122,13 @@ def to_float(s: str) -> float | None:
 
 
 def score(bench: str, row: dict, pred: str) -> bool:
+    """Score a prediction against a row's gold answer.
+
+    Exact (normalized) match first; falls back to a word-boundary
+    substring match so verbose model answers (DeepSight tool-loop
+    sentences, reasoning traces) still score when they contain the
+    gold value.
+    """
     *_, afields, atype_field = BENCHES[bench]
     if bench == "mathvista":
         gold = str(row["answer"])
@@ -134,10 +141,30 @@ def score(bench: str, row: dict, pred: str) -> bool:
             parts = [normalize(x) for x in gold.split(";") if x.strip()]
             pn = normalize(pred)
             return all(pp in pn for pp in parts)
-        return normalize(pred) == normalize(gold)
+        if normalize(pred) == normalize(gold):
+            return True
+        return _contains_gold(gold, pred)
     golds = [str(a) for a in (row[afields] if isinstance(row[afields], list) else [row[afields]])]
     pn = normalize(pred)
-    return any(normalize(g) == pn for g in golds)
+    if any(normalize(g) == pn for g in golds):
+        return True
+    return any(_contains_gold(g, pred) for g in golds)
+
+
+def _contains_gold(gold: str, pred: str) -> bool:
+    """Token substring check: does pred contain gold as a standalone token?
+
+    Uses negative lookaround on word chars (not ``\\b``) so golds ending
+    in non-word characters like ``145°`` still match inside verbose
+    answers.
+    """
+    g = normalize(gold)
+    if not g:
+        return False
+    pn = normalize(pred)
+    if not pn:
+        return False
+    return re.search(rf"(?<!\w){re.escape(g)}(?!\w)", pn) is not None
 
 
 def make_payload(bench: str, row: dict, image_b64: str, mime: str) -> dict:

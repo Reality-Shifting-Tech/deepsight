@@ -1,0 +1,550 @@
+{
+ "meta": {
+  "bench": "all",
+  "limit": 5,
+  "modes": [
+   "direct",
+   "oneshot",
+   "deepsight"
+  ],
+  "vlm_model": "sensenova-6.7-flash-lite",
+  "llm_model": "deepseek-v4-flash"
+ },
+ "summary": {
+  "chartqa": {
+   "direct": {
+    "n": 5,
+    "correct": 5,
+    "acc": 1.0,
+    "tokens_in": 2377,
+    "tokens_out": 535,
+    "tokens_total": 2912,
+    "tok_per_correct": 582.4,
+    "avg_lat_s": 2.38
+   },
+   "oneshot": {
+    "n": 5,
+    "correct": 2,
+    "acc": 0.4,
+    "tokens_in": 4449,
+    "tokens_out": 1762,
+    "tokens_total": 6211,
+    "tok_per_correct": 3105.5,
+    "avg_lat_s": 4.76
+   },
+   "deepsight": {
+    "n": 5,
+    "correct": 4,
+    "acc": 0.8,
+    "tokens_in": 129426,
+    "tokens_out": 29272,
+    "tokens_total": 158698,
+    "tok_per_correct": 39674.5,
+    "avg_lat_s": 33.91
+   }
+  },
+  "mathvista": {
+   "direct": {
+    "n": 5,
+    "correct": 1,
+    "acc": 0.2,
+    "tokens_in": 2485,
+    "tokens_out": 1280,
+    "tokens_total": 3765,
+    "tok_per_correct": 3765.0,
+    "avg_lat_s": 3.29
+   },
+   "oneshot": {
+    "n": 5,
+    "correct": 0,
+    "acc": 0.0,
+    "tokens_in": 4561,
+    "tokens_out": 1914,
+    "tokens_total": 6475,
+    "tok_per_correct": Infinity,
+    "avg_lat_s": 6.37
+   },
+   "deepsight": {
+    "n": 5,
+    "correct": 3,
+    "acc": 0.6,
+    "tokens_in": 537452,
+    "tokens_out": 68639,
+    "tokens_total": 606091,
+    "tok_per_correct": 202030.3,
+    "avg_lat_s": 143.94
+   }
+  },
+  "ocrbench": {
+   "direct": {
+    "n": 5,
+    "correct": 5,
+    "acc": 1.0,
+    "tokens_in": 8881,
+    "tokens_out": 848,
+    "tokens_total": 9729,
+    "tok_per_correct": 1945.8,
+    "avg_lat_s": 4.21
+   },
+   "oneshot": {
+    "n": 5,
+    "correct": 2,
+    "acc": 0.4,
+    "tokens_in": 10973,
+    "tokens_out": 1666,
+    "tokens_total": 12639,
+    "tok_per_correct": 6319.5,
+    "avg_lat_s": 5.5
+   },
+   "deepsight": {
+    "n": 5,
+    "correct": 5,
+    "acc": 1.0,
+    "tokens_in": 426430,
+    "tokens_out": 85168,
+    "tokens_total": 511598,
+    "tok_per_correct": 102319.6,
+    "avg_lat_s": 59.34
+   }
+  }
+ },
+ "rows": {
+  "chartqa": {
+   "direct": [
+    {
+     "i": 0,
+     "pred": "14",
+     "gold": "['14']",
+     "correct": true,
+     "tokens_in": 557,
+     "tokens_out": 187,
+     "lat_s": 3.28
+    },
+    {
+     "i": 1,
+     "pred": "0.57",
+     "gold": "['0.57']",
+     "correct": true,
+     "tokens_in": 557,
+     "tokens_out": 104,
+     "lat_s": 2.57
+    },
+    {
+     "i": 2,
+     "pred": "3",
+     "gold": "['3']",
+     "correct": true,
+     "tokens_in": 555,
+     "tokens_out": 39,
+     "lat_s": 1.82
+    },
+    {
+     "i": 3,
+     "pred": "No",
+     "gold": "['No']",
+     "correct": true,
+     "tokens_in": 556,
+     "tokens_out": 136,
+     "lat_s": 2.33
+    },
+    {
+     "i": 4,
+     "pred": "23",
+     "gold": "['23']",
+     "correct": true,
+     "tokens_in": 152,
+     "tokens_out": 69,
+     "lat_s": 1.92
+    }
+   ],
+   "oneshot": [
+    {
+     "i": 0,
+     "pred": "14",
+     "gold": "['14']",
+     "correct": true,
+     "tokens_in": 965,
+     "tokens_out": 311,
+     "lat_s": 4.28
+    },
+    {
+     "i": 1,
+     "pred": "The image description does not provide the numeric values for Lamb and Corn,",
+     "gold": "['0.57']",
+     "correct": false,
+     "tokens_in": 965,
+     "tokens_out": 384,
+     "lat_s": 5.4
+    },
+    {
+     "i": 2,
+     "pred": "3",
+     "gold": "['3']",
+     "correct": true,
+     "tokens_in": 976,
+     "tokens_out": 299,
+     "lat_s": 4.07
+    },
+    {
+     "i": 3,
+     "pred": "",
+     "gold": "['No']",
+     "correct": false,
+     "tokens_in": 977,
+     "tokens_out": 384,
+     "lat_s": 4.97
+    },
+    {
+     "i": 4,
+     "pred": "",
+     "gold": "['23']",
+     "correct": false,
+     "tokens_in": 566,
+     "tokens_out": 384,
+     "lat_s": 5.1
+    }
+   ],
+   "deepsight": [
+    {
+     "i": 0,
+     "pred": "The bar graph shows **13 food commodities**: Corn, Barley, Rye, Beef, Wheat, Coffee, Tea, Peanuts, Palm oil, Pork, Rice, Sugar, and Cocoa.",
+     "gold": "['14']",
+     "correct": false,
+     "tokens_in": 38000,
+     "tokens_out": 5595,
+     "lat_s": 57.13
+    },
+    {
+     "i": 1,
+     "pred": "The difference is **0.57 index points** \u2014 Lamb is about 0.55% higher than Corn on the price index.",
+     "gold": "['0.57']",
+     "correct": true,
+     "tokens_in": 39153,
+     "tokens_out": 6389,
+     "lat_s": 73.84
+    },
+    {
+     "i": 2,
+     "pred": "There are **3 bars** in the chart \u2014 one for each country: Mauritania, Fiji, and Madagascar.",
+     "gold": "['3']",
+     "correct": true,
+     "tokens_in": 15032,
+     "tokens_out": 5476,
+     "lat_s": 5.97
+    },
+    {
+     "i": 3,
+     "pred": "No. According to the chart, Madagascar is 0.21% while Fiji is 0.38%, so Madagascar's value is **less** than Fiji's.",
+     "gold": "['No']",
+     "correct": true,
+     "tokens_in": 13826,
+     "tokens_out": 5452,
+     "lat_s": 1.78
+    },
+    {
+     "i": 4,
+     "pred": "The lowest bar is **23%** \u2014 it represents the share who said Japan should \"Play a more active military role\" in **2015**.",
+     "gold": "['23']",
+     "correct": true,
+     "tokens_in": 23415,
+     "tokens_out": 6360,
+     "lat_s": 30.82
+    }
+   ]
+  },
+  "mathvista": {
+   "direct": [
+    {
+     "i": 0,
+     "pred": "$PE_{final} = \\frac{1}{2}kd^2$ (spring is compressed by distance $d$)",
+     "gold": "1.2",
+     "correct": false,
+     "tokens_in": 1264,
+     "tokens_out": 256,
+     "lat_s": 3.95
+    },
+    {
+     "i": 1,
+     "pred": "Got it, let's look at the measuring cup. The top mark is 1000 cc, right? Wait, the left side says Liter/Litre, 1000cc is the max. Oh right, the highest volume marked is 1000 cubic centimeters, which is 1 liter, or 1000 ml. Wait the question is total volume. Let me check: the top of the cup is at 1000 cc (1 liter, 1000 ml). Yep, so the total volume is 1000 cc, or 1 liter, or 1000 ml. Wait let's confirm: the markings go up to 1000 cc, that's the maximum, so total volume is 1000 cubic centimeters (1 liter, 1000 milliliters). The answer should be 1000 cc (or 1 liter, 1000 ml). Wait let's see, the label says 1000cc at the top, so total volume is 1000 cc, which is 1 liter. Yeah, so the answer is 1000 cc (or",
+     "gold": "1000",
+     "correct": true,
+     "tokens_in": 816,
+     "tokens_out": 256,
+     "lat_s": 4.05
+    },
+    {
+     "i": 2,
+     "pred": "*   In $\\triangle OBC$: $\\angle BOC + \\angle OBC + \\angle OCB",
+     "gold": "145\u00b0",
+     "correct": false,
+     "tokens_in": 143,
+     "tokens_out": 256,
+     "lat_s": 2.4
+    },
+    {
+     "i": 3,
+     "pred": "*   The green sphere fits all these criteria (Large, Matte/Rubber, Sphere).",
+     "gold": "4",
+     "correct": false,
+     "tokens_in": 137,
+     "tokens_out": 256,
+     "lat_s": 3.66
+    },
+    {
+     "i": 4,
+     "pred": "*   $m\\angle E",
+     "gold": "97",
+     "correct": false,
+     "tokens_in": 125,
+     "tokens_out": 256,
+     "lat_s": 2.38
+    }
+   ],
+   "oneshot": [
+    {
+     "i": 0,
+     "pred": "",
+     "gold": "1.2",
+     "correct": false,
+     "tokens_in": 1673,
+     "tokens_out": 384,
+     "lat_s": 5.58
+    },
+    {
+     "i": 1,
+     "pred": "The image description does not specify the total volume of the measuring cup.",
+     "gold": "1000",
+     "correct": false,
+     "tokens_in": 1245,
+     "tokens_out": 378,
+     "lat_s": 7.34
+    },
+    {
+     "i": 2,
+     "pred": "",
+     "gold": "145\u00b0",
+     "correct": false,
+     "tokens_in": 548,
+     "tokens_out": 384,
+     "lat_s": 6.76
+    },
+    {
+     "i": 3,
+     "pred": "",
+     "gold": "4",
+     "correct": false,
+     "tokens_in": 552,
+     "tokens_out": 384,
+     "lat_s": 5.33
+    },
+    {
+     "i": 4,
+     "pred": "Insufficient information to determine \\(m\\",
+     "gold": "97",
+     "correct": false,
+     "tokens_in": 543,
+     "tokens_out": 384,
+     "lat_s": 6.82
+    }
+   ],
+   "deepsight": [
+    {
+     "i": 0,
+     "pred": "$d \\approx 1.2 \\text{ cm}$** (about $1.16 \\times 10^{-2}$ m).",
+     "gold": "1.2",
+     "correct": true,
+     "tokens_in": 15464,
+     "tokens_out": 6661,
+     "lat_s": 22.99
+    },
+    {
+     "i": 1,
+     "pred": "Based on the markings on the cup, its scale runs from 100 g up to **1000 g** (for flour/sugar \u2014 \"Mehl/Farine\"). The cup is a **1-liter (1000 ml)** measuring cup, so its total volume is **1 L / 1000 ml**. It's currently about 4/5 full (flour at roughly the 800 g mark).",
+     "gold": "1000",
+     "correct": true,
+     "tokens_in": 47961,
+     "tokens_out": 9511,
+     "lat_s": 95.24
+    },
+    {
+     "i": 2,
+     "pred": "\u4e5f\u53ef\u7528\u516c\u5f0f\uff1a\u2220BOC = 90\u00b0 + \u2220A/2 = 90\u00b0 + 55\u00b0 = **145\u00b0**\u3002",
+     "gold": "145\u00b0",
+     "correct": true,
+     "tokens_in": 22595,
+     "tokens_out": 8546,
+     "lat_s": 23.05
+    },
+    {
+     "i": 3,
+     "pred": "**0 objects are left.**",
+     "gold": "4",
+     "correct": false,
+     "tokens_in": 51975,
+     "tokens_out": 14121,
+     "lat_s": 132.55
+    },
+    {
+     "i": 4,
+     "pred": "Let me verify the angle expressions at H and J specifically.",
+     "gold": "97",
+     "correct": false,
+     "tokens_in": 399457,
+     "tokens_out": 29800,
+     "lat_s": 445.88
+    }
+   ]
+  },
+  "ocrbench": {
+   "direct": [
+    {
+     "i": 0,
+     "pred": "on",
+     "gold": "['enabled', 'on']",
+     "correct": true,
+     "tokens_in": 2081,
+     "tokens_out": 36,
+     "lat_s": 3.47
+    },
+    {
+     "i": 1,
+     "pred": "Got it, let's look at the image. The recipe with 4.5 stars is Healthy Carrot Cake, the chef is ChefSandrine? Wait no wait wait, wait the stars: <point>697 427</point> four full and one half, right, the chef below that is ChefSandrine? Wait wait no wait wait, wait the other one is 4.5? Wait no, Bacon-and-Bourbon Collards has 4.5? Wait no wait <point>307 457</point> four full, one half, that's 4.5? Wait no wait the question says four and a half stars. Wait wait let's check: first recipe: Bacon-and-Bourbon Collards, stars: 4 full, 1 half, that's 4.5, chef is sberenter? Wait no wait wait the second one: Healthy Carrot Cake has 4 full, 1 half? Wait no <point>694 426</point> yes, four full, one half, that's 4.5 too? Wait no wait no, wait the question says \"the chef who received four and a half stars on the",
+     "gold": "['sberenter']",
+     "correct": true,
+     "tokens_in": 561,
+     "tokens_out": 256,
+     "lat_s": 5.35
+    },
+    {
+     "i": 2,
+     "pred": "Got it, let's look at the screen. The top says Log in With Facebook, and the app that's logging in is Red Karaoke? Wait no wait the question is what application is used to log in? Wait no, wait the login is via Facebook? Wait no wait wait, no: wait the app that's being logged into is Red Karaoke, but the login method is Facebook? Wait no wait the question says \"What application is used to log in?\" Wait let's check the text: \"Log in With Facebook\" at the top, and the app that's receiving info is Red Karaoke. Wait wait no, wait the question: what app is used to log in? Oh wait, the login is done via Facebook? Wait no wait no, wait let's read again. Wait the screen is for logging into Red Karaoke using Facebook? Wait no wait the question says \"What application is used to log in?\" Wait wait the top bar says \"Log in With Facebook\", so the login is via Facebook? Wait no wait no, wait the app that you are logging into is Red Karaoke, but the login service is Facebook? Wait wait let's check the text: \"Red Karaoke will receive: your public profile...\" Oh right,",
+     "gold": "['Facebook', 'Facebook application']",
+     "correct": true,
+     "tokens_in": 2081,
+     "tokens_out": 256,
+     "lat_s": 3.97
+    },
+    {
+     "i": 3,
+     "pred": "Got it, let's look at the image. The Sleep Time is 12:42 PM, date 03/14/17? Wait no, wait the question says what's the sleep time, the exact text. Oh right, the sleep time line: 12:42 PM 03/14/17? Wait no, wait let's check: <point>617 197</point> is 12:42 PM, <point>867 197</point> is 03/14/17. Wait but the question says \"sleep time\" so the exact text shown for sleep time is 12:42 PM 03/14/17? Wait no, wait let me read again. Oh the Sleep Time row: left is \"Sleep Time :\", then right first is 12:42 PM, then 03/14/17. So the sleep time is 12:42 PM, 03/14/17? Wait but let's make sure. Wait the user says \"answer with the exact text shown\". Oh right, the sleep time",
+     "gold": "['12:42 p.m.', '12:42 PM']",
+     "correct": true,
+     "tokens_in": 2079,
+     "tokens_out": 256,
+     "lat_s": 5.46
+    },
+    {
+     "i": 4,
+     "pred": "APPVIA",
+     "gold": "['APPVIA']",
+     "correct": true,
+     "tokens_in": 2079,
+     "tokens_out": 44,
+     "lat_s": 2.8
+    }
+   ],
+   "oneshot": [
+    {
+     "i": 0,
+     "pred": "The description does not provide \"Wrong Answer 2.\"",
+     "gold": "['enabled', 'on']",
+     "correct": false,
+     "tokens_in": 2507,
+     "tokens_out": 305,
+     "lat_s": 5.52
+    },
+    {
+     "i": 1,
+     "pred": "Cannot be determined from the description.",
+     "gold": "['sberenter']",
+     "correct": false,
+     "tokens_in": 982,
+     "tokens_out": 364,
+     "lat_s": 6.2
+    },
+    {
+     "i": 2,
+     "pred": "",
+     "gold": "['Facebook', 'Facebook application']",
+     "correct": false,
+     "tokens_in": 2483,
+     "tokens_out": 384,
+     "lat_s": 5.86
+    },
+    {
+     "i": 3,
+     "pred": "12:42 PM",
+     "gold": "['12:42 p.m.', '12:42 PM']",
+     "correct": true,
+     "tokens_in": 2500,
+     "tokens_out": 313,
+     "lat_s": 4.84
+    },
+    {
+     "i": 4,
+     "pred": "APPVIA",
+     "gold": "['APPVIA']",
+     "correct": true,
+     "tokens_in": 2501,
+     "tokens_out": 300,
+     "lat_s": 5.06
+    }
+   ],
+   "deepsight": [
+    {
+     "i": 0,
+     "pred": "Wrong answer 2 is **\"on\"**.",
+     "gold": "['enabled', 'on']",
+     "correct": true,
+     "tokens_in": 40900,
+     "tokens_out": 14053,
+     "lat_s": 19.9
+    },
+    {
+     "i": 1,
+     "pred": "The chef who received four and a half stars is **sberenter** \u2014 their recipe is **Bacon-and-Bourbon Collards** (shown with 4 full stars plus a partially filled fifth star). The other recipe, Healthy Carrot Cake (5 stars), belongs to ChefSandrine.",
+     "gold": "['sberenter']",
+     "correct": true,
+     "tokens_in": 231329,
+     "tokens_out": 21862,
+     "lat_s": 232.72
+    },
+    {
+     "i": 2,
+     "pred": "From the login screen, the application used to log in is **Facebook** \u2014 the screen says \"Log in With Facebook\" and shows \"Continue as Jon\" with permission to receive the public profile, email address, and birthday.",
+     "gold": "['Facebook', 'Facebook application']",
+     "correct": true,
+     "tokens_in": 50640,
+     "tokens_out": 16259,
+     "lat_s": 14.04
+    },
+    {
+     "i": 3,
+     "pred": "The sleep time is **12:42 PM**.",
+     "gold": "['12:42 p.m.', '12:42 PM']",
+     "correct": true,
+     "tokens_in": 51439,
+     "tokens_out": 16361,
+     "lat_s": 15.26
+    },
+    {
+     "i": 4,
+     "pred": "The coupon code is **APPVIA**.",
+     "gold": "['APPVIA']",
+     "correct": true,
+     "tokens_in": 52122,
+     "tokens_out": 16633,
+     "lat_s": 14.79
+    }
+   ]
+  }
+ },
+ "verdicts": [
+  "chartqa: oneshot wins tok/correct 3105.5 < 39674.5",
+  "chartqa: deepsight acc 80.0% vs direct 100.0% (gap +20.0%)",
+  "mathvista: DEEPSIGHT WINS tok/correct 202030.3 < inf (acc 60.0% vs 0.0%)",
+  "mathvista: deepsight acc 60.0% vs direct 20.0% (gap -40.0%)",
+  "ocrbench: oneshot wins tok/correct 6319.5 < 102319.6",
+  "ocrbench: deepsight acc 100.0% vs direct 100.0% (gap +0.0%)"
+ ]
+}

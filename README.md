@@ -180,9 +180,17 @@ capability, not just accuracy.
 
 | Benchmark | Accuracy | Tokens per correct answer | Avg latency (s) |
 |---|---|---|---|
-| ChartQA (test) | TBD - run `make bench` | TBD | TBD |
-| MathVista (testmini) | TBD - run `make bench` | TBD | TBD |
-| OCRBench-v2 (test) | TBD - run `make bench` | TBD | TBD |
+| ChartQA (test, 5 rows) | direct 100% / oneshot 40% / DeepSight 80% | 582 / 3,105 / 39,674 | 2.4 / 4.8 / 33.9 |
+| MathVista (testmini, 5 rows) | direct 20% / oneshot 0% / DeepSight 60% | 3,765 / inf / 202,030 | 3.3 / 6.4 / 143.9 |
+| OCRBench-v2 (test, 5 rows) | direct 100% / oneshot 40% / DeepSight 100% | 1,946 / 6,319 / 102,320 | 4.2 / 5.5 / 59.3 |
+
+Setup: reasoning = DeepSeek V4 Flash, vision = senseNova-6.7-flash-lite,
+DeepSight loop capped at 30 look rounds, 5 rows per benchmark. DeepSight
+beats oneshot on accuracy on every benchmark (+40 pts ChartQA, +60 pts
+MathVista, +60 pts OCRBench) and wins tokens-per-correct on MathVista
+where oneshot scores zero; its token cost per correct answer is higher
+on ChartQA/OCRBench because the tool loop burns tokens per round. Full
+per-row records and scoring rules: `make bench` reproduces these numbers.
 
 Methodology, scoring rules, and how to reproduce the numbers are in
 [docs/benchmarks.md](docs/benchmarks.md).

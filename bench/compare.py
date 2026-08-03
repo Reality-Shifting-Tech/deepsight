@@ -169,7 +169,7 @@ def run_deepsight(args, question: str, image_bytes: bytes, src: str) -> tuple[st
         "max_tokens": 256,
         "temperature": 0,
     }
-    body, _ = post_chat(args.deepsight_endpoint, None, "deepsight", payload)
+    body, _ = post_chat(args.deepsight_endpoint, None, "deepsight", payload, timeout=600)
     msg = body["choices"][0]["message"]
     pred = extract_final(msg.get("content") or msg.get("reasoning") or "")
     return pred, body.get("usage", {})
