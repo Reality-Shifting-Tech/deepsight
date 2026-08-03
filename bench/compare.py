@@ -278,7 +278,7 @@ def main() -> int:
         print(f"\n== {bench} ==", flush=True)
         summary[bench] = {}
         rows_out[bench] = {}
-        rows = list(stream_rows(bench, args.offset, args.limit))
+        rows = list(enumerate(stream_rows(bench, args.offset, args.limit)))
         for mode in modes:
             print(f"  running {mode} ({len(rows)} rows)...", flush=True)
             s, records = run_one_mode(args, mode, bench, rows)
