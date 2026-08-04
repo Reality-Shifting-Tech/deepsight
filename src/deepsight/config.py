@@ -1,8 +1,8 @@
-"""Runtime configuration for the deepsight server.
+"""Runtime configuration for deepsight.
 
 Settings are read from environment variables (``DEEPSIGHT_*`` prefix) and
-an optional ``.env`` file, so the server deploys without any code changes:
-``DEEPSIGHT_REASONING_MODEL``, ``DEEPSIGHT_VISION_BASE_URL``, etc.
+an optional ``.env`` file. Vision is device-native; the only required piece
+is the path to the compiled Apple Vision binary.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Server + backend configuration."""
+    """Device-native vision + optional reasoning-loop configuration."""
 
     model_config = SettingsConfigDict(
         env_prefix="DEEPSIGHT_",
@@ -22,10 +22,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # --- server ---
-    host: str = "127.0.0.1"
-    port: int = 8080
-    log_level: str = "info"
+    # --- native eyes (Apple Vision framework binary) ---
+    vision_bin: str = "vision_eyes"
 
     # --- reasoning backend (the text-only LLM being given vision) ---
     reasoning_base_url: str = "https://api.deepseek.com/v1"
@@ -34,16 +32,6 @@ class Settings(BaseSettings):
     reasoning_temperature: float = 0.2
     reasoning_max_tokens: int = 1024
     reasoning_tool_round_max_tokens: int = 256
-
-    # --- vision backend (the eyes; default Ollama minicpm-v, or "native"
-    # for the Apple Vision framework binary: zero tokens, zero downloads) ---
-    vision_backend: str = "ollama"
-    vision_bin: str = "vision_eyes"
-    vision_base_url: str = "http://127.0.0.1:11434"
-    vision_api_key: str = ""
-    vision_model: str = "minicpm-v:latest"
-    vision_temperature: float = 0.0
-    vision_tool_max_tokens: int = 64
 
     # --- vision-session loop ---
     max_look_rounds: int = 5
@@ -57,11 +45,6 @@ class Settings(BaseSettings):
     def reasoning_key(self) -> str | None:
         """API key for the reasoning backend, or None when unset."""
         return self.reasoning_api_key or None
-
-    @property
-    def vision_key(self) -> str | None:
-        """API key for the vision backend, or None when unset."""
-        return self.vision_api_key or None
 
 
 @lru_cache

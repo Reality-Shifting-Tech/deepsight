@@ -5,7 +5,8 @@ you and the maintainers; please read it before opening a pull request.
 
 ## Development setup
 
-Prerequisites: Python >= 3.11 and [uv](https://docs.astral.sh/uv).
+Prerequisites: Python >= 3.11, [uv](https://docs.astral.sh/uv), and on macOS
+an Xcode SDK to compile `vision_eyes` (see docs/architecture.md).
 
 ```bash
 uv venv
@@ -51,6 +52,13 @@ messages, so write them for a reader, not for the diff.
   model endpoints or network access; inject fakes or mock the HTTP backends.
   Async tests run under pytest-asyncio (auto mode is configured).
 
+## No-server rule
+
+Vision is device-native. Do not add a server, an HTTP vision endpoint, a
+port, or a remote VLM dependency for vision. The OS vision framework is the
+only vision backend; `deepsight describe` is the product. PRs that introduce
+one will be rejected.
+
 ## Code style
 
 The bar is _edited, not generated_. Code should read as if a senior engineer
@@ -62,9 +70,8 @@ wrote it deliberately:
   milestone requires.
 - Consistent naming within a module; prefer the existing vocabulary over
   introducing synonyms.
-- Every non-2xx API response uses the standard error envelope used elsewhere
-  in the codebase; match the existing convention rather than inventing a new
-  one.
+- Reuse the existing error-handling convention in the codebase rather than
+  inventing a new one.
 
 ## Adding a benchmark
 

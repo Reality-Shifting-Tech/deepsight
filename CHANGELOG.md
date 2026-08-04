@@ -7,49 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+### Removed
 
-- (nothing yet; see the 0.1.0 section for the current feature set)
+- **Server removed.** The FastAPI/uvicorn OpenAI-compatible server adapter
+  (`deepsight serve`, `src/deepsight/server.py`) is gone. Vision is
+  device-native only: `deepsight describe` shells the Apple Vision binary
+  directly. No ports, no HTTP vision endpoint, no Ollama/OpenAI-compatible
+  vision backends, no launchd service. The vision-session loop remains as a
+  library for text-only LLMs, with the native binary as its only eyes.
+- Dropped `fastapi`, `uvicorn`, and `python-multipart` dependencies.
+- Removed `make dev` and `make bench-deepsight` targets.
 
 ## [0.1.0] - 2026-08-03
 
 ### Added
 
-Initial release. DeepSight is an MIT-licensed, OpenAI-compatible vision proxy
-that gives text-only LLMs interactive vision through a vision-session loop.
+Initial release. DeepSight is an MIT-licensed, device-native vision toolkit:
+`deepsight describe` uses the OS's own vision frameworks (Apple Vision on
+macOS) for OCR, scene classification, saliency, and face/human/rectangle
+detection. No server, zero tokens.
 
-Phase 1 - Core (the vision session loop):
+Phase 1 - Core (the native eyes + vision session loop):
 
-- FastAPI app with OpenAI-compatible `POST /v1/chat/completions` and
-  `GET /v1/models`, including streaming pass-through.
-- `perception.py`: `sketch()` - a single vision-model pass producing a compact
-  JSON scene inventory (objects, text regions, layout, palette).
+- `vision_eyes` - compiled Apple Vision binary (OCR, scene classification,
+  saliency, face/human/rectangle detection), on-device and free.
+- `deepsight describe` - CLI that shells the binary directly.
+- `perception.py`: `sketch()` - a single native vision pass producing a
+  compact JSON scene inventory (objects, text regions, layout, palette).
 - Tool protocol: `look`, `crop`, `ocr`, `zoom`, `summarize`, each answered by
-  a targeted vision-backend pass.
+  a targeted native vision pass.
 - Text-fallback protocol (`[LOOK ...]` / `[OCR ...]` markers) for tool-less
   reasoning models.
-- Reasoning backends: DeepSeek preset (default) and generic
-  OpenAI-compatible base URL.
-- Vision backends: Ollama (`minicpm-v` default) and OpenAI-compatible VLM.
+- Reasoning backend: DeepSeek preset (default) and generic OpenAI-compatible
+  base URL, used by the optional loop.
 - Perception cache: content-addressed by image hash and crop hash, with TTL.
 - Concurrent tool calls (all pending looks fire at once).
 
-Phase 2 - Viewer UI (the differentiator):
-
-- React + Vite app at `ui/`, served by FastAPI at `/ui` (static build).
-- Chat pane with streaming answers.
-- Image input via paste, drag-drop, file picker, and URL.
-- Inline thumbnails, lightbox, zoom, pan, and region-select; region-select
-  emits a `look` tool call.
-
-Phase 3 - Packaging:
+Phase 2 - Packaging:
 
 - `pip install .` and `uv tool install` verified on a clean environment.
-- Optional Dockerfile and compose example.
-- `deepsight doctor` connectivity check for reasoning and vision backends.
+- `deepsight doctor` connectivity check for the native vision binary and
+  reasoning endpoint.
 - LICENSE (MIT), CONTRIBUTING, AGENTS, and CI (lint + typecheck + tests).
 
-Phase 4 - Benchmarks:
+Phase 3 - Benchmarks:
 
 - Cloud-streaming harness (`bench/harness.py`) with zero local dataset
   downloads, streaming rows from the Hugging Face datasets-server API:

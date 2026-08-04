@@ -2,8 +2,8 @@
 
 This document describes how DeepSight is benchmarked, what the metrics mean,
 and how to reproduce the numbers. The headline claim is **leading in
-efficiency and capability**: DeepSight should reach comparable accuracy to a
-direct vision model while spending far fewer tokens per correct answer.
+efficiency and capability**: device-native vision reaches comparable accuracy
+to a direct vision model while spending far fewer tokens per correct answer.
 
 ## Design constraints
 
@@ -16,9 +16,9 @@ direct vision model while spending far fewer tokens per correct answer.
 - **Reproducible.** Fixed offsets and limits, temperature 0, and a fixed seed
   order make runs comparable.
 
-## The three modes
+## The modes
 
-Every benchmark run compares three modes against the same rows:
+Every benchmark run compares two baseline modes against the same rows:
 
 1. **Direct VLM (capability ceiling).** A strong multimodal model answers
    each question directly from the image. This sets the accuracy ceiling for
@@ -26,11 +26,13 @@ Every benchmark run compares three modes against the same rows:
 2. **One-shot description bridge (category baseline).** A vision model
    describes the whole image once, then a text model answers from the
    description. This is the visionbridge-style approach DeepSight improves on.
-3. **DeepSight.** The vision-session loop: sketch, then targeted tool calls
-   until the answer is produced.
 
-The Makefile runs all three with `make bench`; per-mode targets are
-`make bench-direct`, `make bench-bridge`, `make bench-deepsight`.
+Device-native `deepsight describe` can be scored on the same rows by piping
+its output through the harness adapter; the loop and cache are measured as a
+library (see [docs/architecture.md](architecture.md)).
+
+The Makefile runs both baselines with `make bench`; per-mode targets are
+`make bench-direct` and `make bench-bridge`.
 
 ## Benchmarks
 
@@ -44,7 +46,8 @@ The `BENCHES` registry lives in `bench/harness.py`, one entry per benchmark:
 | OCRBench-v2 | `lmms-lab/OCRBench-v2`, `default`, `test` | OCR + screenshot/UI QA | Normalized exact match against the answer list |
 
 OCRBench-v2 includes rico/APP agent rows, which are exactly DeepSight's sweet
-spot: dense UI screenshots where targeted crops beat whole-image descriptions.
+spot: dense UI screenshots where native OCR + targeted crops beat whole-image
+descriptions.
 
 ## Metrics
 
@@ -57,19 +60,14 @@ spot: dense UI screenshots where targeted crops beat whole-image descriptions.
 - **Average latency per question.** Wall-clock seconds from request to
   response, averaged over the batch.
 - **Cache-hit rate.** Fraction of vision passes served from the perception
-  cache rather than the vision backend (reported for DeepSight mode).
+  cache rather than the native eyes (reported for loop mode).
 
 ## How to run
 
-Prerequisites: a running DeepSight server (or any target endpoint), a direct
-VLM endpoint, and a description-bridge endpoint. API keys come from the
-environment only.
+Prerequisites: a direct VLM endpoint and a description-bridge endpoint. API
+keys come from the environment only.
 
 ```bash
-# DeepSight mode against a local dev server (defaults)
-make bench-deepsight
-
-# All three modes (endpoint/model/api-key env vars required for baselines)
 make bench-direct \
     DIRECT_ENDPOINT=https://token.sensenova.ai/v1 \
     DIRECT_MODEL=sensenova-6.7-flash-lite \
@@ -87,8 +85,9 @@ The harness can also target a single benchmark directly:
 
 ```bash
 python3 bench/harness.py --bench chartqa --limit 20 \
-    --endpoint http://localhost:8080/v1 --model deepsight \
-    --api-key local --out bench/results_chartqa.json
+    --endpoint https://token.sensenova.ai/v1 \
+    --model sensenova-6.7-flash-lite \
+    --api-key KEY --out bench/results_chartqa.json
 ```
 
 ## Publishing results

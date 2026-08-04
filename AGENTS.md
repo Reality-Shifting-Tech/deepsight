@@ -6,18 +6,26 @@ quick-reference. Where the two overlap, CONTRIBUTING wins.
 
 ## What this is
 
-DeepSight is an MIT-licensed, OpenAI-compatible vision proxy that gives
-text-only LLMs interactive vision via a vision-session loop. A reasoning model
-gets a compact scene sketch, then issues tool calls (`look`, `crop`, `ocr`,
-`zoom`, `summarize`) that are answered by targeted vision-model passes, with a
-content-addressed perception cache. Python 3.11+, setuptools src layout,
-FastAPI server. Default reasoning backend is DeepSeek V4 Flash; default vision
-backend is Ollama `minicpm-v`. Currently at 0.1.0 (initial release).
+DeepSight is an MIT-licensed, device-native vision toolkit. `deepsight
+describe` describes any image using the OS's own vision frameworks (Apple
+Vision on macOS): OCR, scene classification, saliency, face/human/rectangle
+detection. No server, no network, zero tokens. Python 3.11+, setuptools src
+layout. The compiled `vision_eyes` binary is the eyes; a small CLI
+(`__main__.py`) shells it directly. A vision-session loop (orchestrator +
+perception) is available as a library for text-only LLMs, with an optional
+reasoning backend (DeepSeek default). Currently at 0.1.0 (initial release).
+
+**Hard rule: vision is device-native. Never introduce a server, an HTTP
+endpoint, or a remote VLM for vision.** No ports, no `serve` command, no
+Ollama/OpenAI-compatible vision backends. The device's own frameworks are the
+product.
 
 ## Toolchain
 
 - Python >= 3.11 (3.12 is also supported and tested in CI).
 - `uv` for environment and dependency management.
+- macOS + Xcode SDK to compile `vision_eyes` from
+  `scripts/vision_eyes.swift` (see docs/architecture.md for the command).
 - No live infrastructure is required to run the test suite; unit tests must
   not call external model endpoints.
 
@@ -32,9 +40,8 @@ uv pip install -e '.[dev]'
 make lint        # ruff check . (zero-warning policy)
 make typecheck   # mypy src
 make test        # pytest (testpaths: tests)
-make dev         # uvicorn --reload on :8080
 make format      # ruff format + ruff check --fix
-make bench       # three-way benchmark comparison
+make bench       # benchmark comparison of baseline modes
 ```
 
 Full pre-push gate: `make all` (lint + typecheck + test).
@@ -42,13 +49,14 @@ Full pre-push gate: `make all` (lint + typecheck + test).
 ## Layout
 
 ```
-src/deepsight/     FastAPI app: OpenAI-compatible /v1 server, vision session
-                   loop, tool protocol, backends, perception cache
-  __main__.py      CLI entry point (deepsight command)
+src/deepsight/     CLI + vision session loop, tool protocol, backends,
+                   perception cache
+  __main__.py      CLI entry point (deepsight describe / doctor)
 bench/             Cloud-streaming benchmark harness (bench/harness.py) and
                    the BENCHES registry (ChartQA, MathVista, OCRBench-v2)
 docs/              architecture.md, benchmarks.md
 tests/             pytest suite (testpaths configured in pyproject.toml)
+scripts/           vision_eyes.swift - the native Apple Vision binary source
 ```
 
 The package lives under `src/` (setuptools `packages.find where = ["src"]`);
@@ -59,9 +67,8 @@ imports are `deepsight.*`, not `src.deepsight.*`.
 Runtime configuration is via environment variables (see README). Key ones for
 development:
 
-- `REASONING_API_KEY` - required for real reasoning calls (DeepSeek default).
-- `VISION_BASE_URL` - defaults to `http://localhost:11434/v1` (Ollama).
-- `PORT` - server port, default 8080.
+- `DEEPSIGHT_VISION_BIN` - path to the compiled native vision binary.
+- `DEEPSIGHT_REASONING_API_KEY` - optional, only for the vision-session loop.
 
 ## Conventions (enforced in review/CI)
 
@@ -76,25 +83,8 @@ development:
   why or nothing), no dead code, no speculative abstractions beyond what the
   current milestone requires, reuse existing vocabulary.
 - One logical change per PR; keep diffs reviewable.
-
-## Streaming status events
-
-`POST /v1/chat/completions` with `"stream": true` emits live progress chunks
-before the final answer, so clients can show feedback instead of silence
-during the ~1 min vision session.
-
-Each progress chunk carries a `delta.status` string (standard OpenAI SSE
-shape, unknown field ignored by strict clients):
-
-- `👁️ viewing image...` - image loaded, sketch in progress
-- `✏️ sketching scene...` - vision pass building the scene sketch
-- `🔍 looking (<tool>)...` - one `look`/`ocr`/`zoom`/... tool round
-- `✅ answering...` - reasoning composing the final answer
-
-The final `delta.content` chunk carries the answer. Non-stream responses
-return the same milestones via the `Orchestrator.run(..., on_event=cb)`
-callback. Hermes integration: display `delta.status` chunks as transient
-status lines and treat `delta.content` as the real answer.
+- Never reintroduce the server. If a change adds a port, an HTTP vision
+  endpoint, or a remote VLM dependency, it will be rejected in review.
 
 ## Working agreement for agents
 

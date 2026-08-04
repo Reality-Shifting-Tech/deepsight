@@ -1,16 +1,17 @@
-"""Backend clients: the reasoning model (text-only LLM) and the vision
-model (VLM that answers targeted looks at image regions).
+"""Backend clients: the reasoning model (text-only LLM) and the eyes.
 
-Both backends are plain HTTP clients with zero heavy dependencies
-(no torch, no transformers), so the proxy installs in seconds.
+The eyes are the device's own vision framework (Apple Vision via the compiled
+``vision_eyes`` binary): zero tokens, zero model downloads, zero GPU. The
+reasoning backend is an optional OpenAI-compatible chat endpoint used by the
+vision-session loop. Both are plain HTTP/subprocess clients with zero heavy
+dependencies (no torch, no transformers).
 """
 
 from __future__ import annotations
 
-import base64
 import json
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any
 
 import httpx
 
@@ -143,13 +144,13 @@ def _safe_json(raw: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Vision backend — Ollama VLM (minicpm-v default) or any OpenAI-compatible VLM
+# Vision backend — the device's own eyes (Apple Vision framework)
 # ---------------------------------------------------------------------------
 
 
 @dataclass(slots=True)
 class VisionResult:
-    """One vision-model answer plus its token usage."""
+    """One vision answer. Native eyes burn zero tokens."""
 
     text: str
     prompt_tokens: int
@@ -163,134 +164,12 @@ class VisionResult:
         }
 
 
-class OllamaVisionBackend:
-    """Vision via Ollama's native API (minicpm-v, llava, qwen-vl...)."""
-
-    def __init__(
-        self,
-        base_url: str = "http://127.0.0.1:11434",
-        model: str = "minicpm-v:latest",
-        temperature: float = 0.0,
-        timeout: float = 120.0,
-        max_output_tokens: int | None = None,
-    ) -> None:
-        self.base_url = base_url.rstrip("/")
-        self.model = model
-        self.temperature = temperature
-        self.timeout = timeout
-        self.max_output_tokens = max_output_tokens
-
-    def ask(
-        self,
-        prompt: str,
-        image_bytes: bytes,
-        max_output_tokens: int | None = None,
-    ) -> VisionResult:
-        """Ask the VLM a question about an image, returning text + usage.
-
-        ``max_output_tokens`` overrides the constructor default per call
-        (the sketch gets no cap; tool observations get a small one).
-        """
-        options: dict[str, Any] = {"temperature": self.temperature}
-        cap = max_output_tokens if max_output_tokens is not None else self.max_output_tokens
-        if cap is not None:
-            options["num_predict"] = cap
-        payload = {
-            "model": self.model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": prompt,
-                    "images": [base64.b64encode(image_bytes).decode()],
-                }
-            ],
-            "stream": False,
-            "options": options,
-        }
-        with httpx.Client(timeout=self.timeout) as client:
-            resp = client.post(f"{self.base_url}/api/chat", json=payload)
-            resp.raise_for_status()
-            data = resp.json()
-        msg = data.get("message", {})
-        return VisionResult(
-            text=msg.get("content", "").strip(),
-            prompt_tokens=int(data.get("prompt_eval_count", 0)),
-            completion_tokens=int(data.get("eval_count", 0)),
-        )
-
-
-class OpenAICompatibleVisionBackend:
-    """Vision via any OpenAI-compatible VLM (sensenova, gpt-4o, qwen-vl...)."""
-
-    def __init__(
-        self,
-        base_url: str,
-        api_key: str | None = None,
-        model: str = "sensenova-6.7-flash-lite",
-        temperature: float = 0.0,
-        timeout: float = 120.0,
-        max_output_tokens: int | None = None,
-    ) -> None:
-        self.base_url = base_url.rstrip("/")
-        self.api_key = api_key
-        self.model = model
-        self.temperature = temperature
-        self.timeout = timeout
-        self.max_output_tokens = max_output_tokens
-
-    def _headers(self) -> dict[str, str]:
-        headers = {"Content-Type": "application/json"}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
-        return headers
-
-    def ask(
-        self,
-        prompt: str,
-        image_bytes: bytes,
-        max_output_tokens: int | None = None,
-    ) -> VisionResult:
-        """Ask the VLM a question about an image, returning text + usage."""
-        data_url = "data:image/png;base64," + base64.b64encode(image_bytes).decode()
-        payload: dict[str, Any] = {
-            "model": self.model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": data_url}},
-                    ],
-                }
-            ],
-            "temperature": self.temperature,
-            "stream": False,
-        }
-        cap = max_output_tokens if max_output_tokens is not None else self.max_output_tokens
-        if cap is not None:
-            payload["max_tokens"] = cap
-        with httpx.Client(timeout=self.timeout) as client:
-            resp = client.post(
-                f"{self.base_url}/chat/completions",
-                headers=self._headers(),
-                json=payload,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-        usage = data.get("usage", {})
-        return VisionResult(
-            text=data["choices"][0]["message"].get("content", "").strip(),
-            prompt_tokens=int(usage.get("prompt_tokens", 0)),
-            completion_tokens=int(usage.get("completion_tokens", 0)),
-        )
-
-
 class NativeVisionBackend:
     """Apple Vision framework eyes via the compiled ``vision_eyes`` binary.
 
-    Zero model downloads, zero tokens, zero GPU: OCR + saliency only, via
-    macOS Vision.framework. Best for text-bearing images (charts, docs,
-    UI, screenshots). The prompt is advisory; the eyes always emit OCR.
+    Zero model downloads, zero tokens, zero GPU: OCR, scene classification,
+    saliency, face/human/rectangle detection, all on-device. The prompt is
+    advisory; the eyes always emit OCR + scene + counts.
     """
 
     def __init__(self, bin_path: str, timeout: float = 60.0) -> None:
@@ -300,18 +179,29 @@ class NativeVisionBackend:
     @staticmethod
     def _parse_stdout(raw: str) -> str:
         ocr: list[str] = []
+        scene: list[str] = []
         saliency: list[str] = []
+        counts: list[str] = []
         for line in raw.splitlines():
+            stripped = line.strip()
             if line.startswith("  "):
-                ocr.append(line.strip())
-            elif "salient objects" in line:
-                saliency.append(line.strip())
+                ocr.append(stripped)
+            elif stripped.startswith("scene:"):
+                scene.append(stripped.removeprefix("scene:").strip())
+            elif "salient objects" in stripped:
+                saliency.append(stripped)
+            elif stripped.startswith(("faces:", "humans:", "rectangles:")):
+                counts.append(stripped)
         parts: list[str] = []
         if ocr:
             parts.append("OCR text:\n" + "\n".join(ocr))
+        if scene:
+            parts.append("Scene: " + scene[0])
         if saliency:
             parts.append("\n".join(saliency))
-        return "\n".join(parts).strip() or "(no text detected)"
+        if counts:
+            parts.append("\n".join(counts))
+        return "\n".join(parts).strip() or "(no text or scene detected)"
 
     def ask(
         self,
@@ -341,33 +231,3 @@ class NativeVisionBackend:
         finally:
             os.unlink(tmp)
         return VisionResult(text=text, prompt_tokens=0, completion_tokens=0)
-
-
-VisionBackend = Literal["ollama", "openai", "native"]
-
-
-def build_vision_backend(
-    settings: Any,
-) -> OllamaVisionBackend | OpenAICompatibleVisionBackend | NativeVisionBackend:
-    """Construct the configured vision backend.
-
-    The backend kind is chosen by ``DEEPSIGHT_VISION_BACKEND``: ``native``
-    uses the Apple Vision framework binary (zero tokens, zero downloads);
-    otherwise an ``http://...:11434`` address is treated as Ollama and
-    anything else as an OpenAI-compatible endpoint.
-    """
-    if getattr(settings, "vision_backend", "ollama") == "native":
-        return NativeVisionBackend(bin_path=settings.vision_bin)
-    base = settings.vision_base_url
-    if "11434" in base or "ollama" in base:
-        return OllamaVisionBackend(
-            base_url=base,
-            model=settings.vision_model,
-            temperature=settings.vision_temperature,
-        )
-    return OpenAICompatibleVisionBackend(
-        base_url=base,
-        api_key=settings.vision_key,
-        model=settings.vision_model,
-        temperature=settings.vision_temperature,
-    )

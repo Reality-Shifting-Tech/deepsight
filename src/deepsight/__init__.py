@@ -1,8 +1,11 @@
-"""deepsight — OpenAI-compatible vision proxy for text-only LLMs.
+"""deepsight — device-native vision for text-only LLMs.
 
-Gives any text-only reasoning model interactive vision through a
-vision-session loop: a compact scene sketch plus targeted, on-demand
-tool calls (look / crop / ocr / zoom) answered by a local vision model.
+``deepsight describe`` describes any image with the OS's own vision
+frameworks (Apple Vision on macOS): OCR, scene classification, saliency,
+face/human/rectangle detection. No server, zero tokens.
+
+An optional vision-session loop (sketch + targeted look/crop/ocr/zoom
+calls) is available as a library for text-only reasoning models.
 """
 
 __version__ = "0.1.0"

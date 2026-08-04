@@ -27,7 +27,7 @@ class CacheEntry:
 class PerceptionCache:
     """TTL cache keyed by image hash + region + prompt kind.
 
-    Thread-safe enough for the server's use: lookups and stores are
+    Thread-safe enough for the loop's use: lookups and stores are
     atomic dict operations under the GIL.
     """
 

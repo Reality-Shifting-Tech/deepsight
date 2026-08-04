@@ -3,18 +3,13 @@
 
 UV          ?= uv
 PYTHON      ?= python3
-APP_MODULE  ?= deepsight.main:app
-PORT        ?= 8080
 
 # Benchmark defaults (see docs/benchmarks.md for the full methodology)
 BENCH_LIMIT         ?= 20
 BENCH_SLEEP         ?= 0
 BENCH_OUT           ?= bench/results
-DEEPSIGHT_ENDPOINT  ?= http://localhost:8080/v1
-DEEPSIGHT_MODEL     ?= deepsight
-DEEPSIGHT_API_KEY   ?= local
 
-.PHONY: help all test lint typecheck format dev bench bench-direct bench-bridge bench-deepsight
+.PHONY: help all test lint typecheck format bench bench-direct bench-bridge
 
 help: ## Show available targets
 	@echo "deepsight targets:"
@@ -35,10 +30,7 @@ format: ## Auto-format with ruff
 	$(UV) run ruff format .
 	$(UV) run ruff check --fix .
 
-dev: ## Run the server with hot reload on :$(PORT)
-	$(UV) run uvicorn $(APP_MODULE) --reload --host 0.0.0.0 --port $(PORT)
-
-bench: bench-direct bench-bridge bench-deepsight ## Three-way benchmark comparison (all modes)
+bench: bench-direct bench-bridge ## Benchmark comparison (baseline modes)
 
 bench-direct: ## Baseline A: direct VLM (capability ceiling)
 	@test -n "$(DIRECT_ENDPOINT)" || (echo "DIRECT_ENDPOINT is required (e.g. https://token.sensenova.ai/v1)"; exit 1)
@@ -51,6 +43,3 @@ bench-bridge: ## Baseline B: one-shot description bridge (visionbridge style)
 	@test -n "$(BRIDGE_MODEL)" || (echo "BRIDGE_MODEL is required"; exit 1)
 	@test -n "$(BRIDGE_API_KEY)" || (echo "BRIDGE_API_KEY is required"; exit 1)
 	$(PYTHON) bench/harness.py --bench all --limit $(BENCH_LIMIT) --endpoint $(BRIDGE_ENDPOINT) --model $(BRIDGE_MODEL) --api-key $(BRIDGE_API_KEY) --sleep $(BENCH_SLEEP) --out $(BENCH_OUT)_bridge.json
-
-bench-deepsight: ## DeepSight mode (defaults to a local dev server)
-	$(PYTHON) bench/harness.py --bench all --limit $(BENCH_LIMIT) --endpoint $(DEEPSIGHT_ENDPOINT) --model $(DEEPSIGHT_MODEL) --api-key $(DEEPSIGHT_API_KEY) --sleep $(BENCH_SLEEP) --out $(BENCH_OUT)_deepsight.json

@@ -1,14 +1,9 @@
-"""Tests for the HTTP backend clients, all network calls mocked."""
+"""Tests for the backend clients: reasoning (mocked HTTP) + native eyes (subprocess)."""
 
 import pytest
 
 from deepsight import backends
-from deepsight.backends import (
-    OllamaVisionBackend,
-    OpenAICompatibleVisionBackend,
-    ReasoningBackend,
-    build_vision_backend,
-)
+from deepsight.backends import NativeVisionBackend, ReasoningBackend
 
 
 class FakeResponse:
@@ -45,12 +40,6 @@ class FakeClient:
         return FakeResponse(self._response_for(url, json))
 
     def _response_for(self, url: str, json: dict | None) -> dict:
-        if "/api/chat" in url:
-            return {
-                "message": {"content": " vision reply "},
-                "prompt_eval_count": 11,
-                "eval_count": 4,
-            }
         if "chat/completions" in url:
             if json and json.get("tools"):
                 return {
@@ -85,6 +74,11 @@ def fake_http(monkeypatch):
     monkeypatch.setattr(backends.httpx, "Client", FakeClient)
 
 
+# ---------------------------------------------------------------------------
+# Reasoning backend (OpenAI-compatible chat)
+# ---------------------------------------------------------------------------
+
+
 def test_reasoning_backend_max_tokens_in_payload():
     b = ReasoningBackend("https://api.example.com/v1", api_key="sk-x")
     b.chat([{"role": "user", "content": "hi"}], max_tokens=64)
@@ -114,28 +108,6 @@ def test_reasoning_backend_parses_cache_usage():
     assert res.prompt_tokens == 500
     assert res.cache_hit_tokens == 490
     assert res.cache_miss_tokens == 10
-
-
-def test_ollama_vision_backend_cap():
-
-    class CapClient(FakeClient):
-        def _response_for(self, url, json):
-            return {
-                "message": {"content": "tiny"},
-                "prompt_eval_count": 11,
-                "eval_count": 4,
-            }
-
-    backends.httpx.Client = CapClient
-    b = OllamaVisionBackend("http://127.0.0.1:11434", model="minicpm-v:latest")
-    b.ask("what is this", b"imagedata", max_output_tokens=48)
-    assert CapClient.last_json["options"]["num_predict"] == 48
-
-
-def test_openai_vision_backend_cap():
-    b = OpenAICompatibleVisionBackend("https://vlm.example.com/v1", api_key="vk", model="gpt-4o")
-    b.ask("what is this", b"imagedata", max_output_tokens=48)
-    assert FakeClient.last_json["max_tokens"] == 48
 
 
 def test_reasoning_backend_plain_chat():
@@ -202,48 +174,67 @@ def test_safe_json():
     assert backends._safe_json("[1,2]") == {}
 
 
-def test_ollama_vision_backend():
-    b = OllamaVisionBackend("http://127.0.0.1:11434", model="minicpm-v:latest")
-    res = b.ask("what is this", b"imagedata")
-    assert res.text == "vision reply"
-    assert res.prompt_tokens == 11
-    assert res.completion_tokens == 4
-    assert FakeClient.last_url == "http://127.0.0.1:11434/api/chat"
-    payload = FakeClient.last_json
-    assert payload["model"] == "minicpm-v:latest"
-    assert payload["messages"][0]["images"][0]  # base64 present
-    assert payload["stream"] is False
+# ---------------------------------------------------------------------------
+# Native vision backend (Apple Vision binary via subprocess)
+# ---------------------------------------------------------------------------
 
 
-def test_openai_vision_backend():
-    b = OpenAICompatibleVisionBackend("https://vlm.example.com/v1", api_key="vk", model="gpt-4o")
-    res = b.ask("what is this", b"imagedata")
-    assert res.text == "42"
-    assert res.prompt_tokens == 9
-    assert FakeClient.last_headers["Authorization"] == "Bearer vk"
-    payload = FakeClient.last_json
-    part = payload["messages"][0]["content"][1]
-    assert part["type"] == "image_url"
-    assert part["image_url"]["url"].startswith("data:image/png;base64,")
+def test_native_parse_stdout_sections():
+    raw = (
+        "  MIKE\n"
+        "  MYERS\n"
+        "  crypto.com\n"
+        "scene: adult(0.91), people(0.91)\n"
+        "faces: 1\n"
+        "humans: 1\n"
+        "rectangles: 2\n"
+    )
+    out = NativeVisionBackend._parse_stdout(raw)
+    assert "OCR text:" in out
+    assert "MIKE" in out
+    assert "Scene: adult(0.91), people(0.91)" in out
+    assert "faces: 1" in out
+    assert "humans: 1" in out
+    assert "rectangles: 2" in out
 
 
-class DummySettings:
-    vision_base_url = "http://127.0.0.1:11434"
-    vision_model = "minicpm-v:latest"
-    vision_temperature = 0.0
-    vision_key = None
+def test_native_parse_stdout_empty():
+    out = NativeVisionBackend._parse_stdout("")
+    assert out == "(no text or scene detected)"
 
 
-class DummySettingsOpenAI:
-    vision_base_url = "https://vlm.example.com/v1"
-    vision_model = "gpt-4o"
-    vision_temperature = 0.0
-    vision_key = "vk"
+def test_native_ask_success(monkeypatch, tmp_path):
+    import subprocess
+
+    img = tmp_path / "img.png"
+    img.write_bytes(b"pngdata")
+
+    class FakeProc:
+        returncode = 0
+        stdout = "  HELLO\nscene: text(0.9)\n"
+        stderr = ""
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: FakeProc())
+    b = NativeVisionBackend(bin_path="/fake/vision_eyes")
+    res = b.ask("what is this", b"pngdata")
+    assert res.text == "OCR text:\nHELLO\nScene: text(0.9)"
+    assert res.prompt_tokens == 0
+    assert res.completion_tokens == 0
 
 
-def test_build_vision_backend_ollama():
-    assert isinstance(build_vision_backend(DummySettings()), OllamaVisionBackend)
+def test_native_ask_error(monkeypatch, tmp_path):
+    import subprocess
 
+    img = tmp_path / "img.png"
+    img.write_bytes(b"pngdata")
 
-def test_build_vision_backend_openai():
-    assert isinstance(build_vision_backend(DummySettingsOpenAI()), OpenAICompatibleVisionBackend)
+    class FakeProc:
+        returncode = 1
+        stdout = ""
+        stderr = "boom"
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: FakeProc())
+    b = NativeVisionBackend(bin_path="/fake/vision_eyes")
+    res = b.ask("what is this", b"pngdata")
+    assert res.text.startswith("vision_eyes error:")
+    assert res.prompt_tokens == 0

@@ -9,8 +9,6 @@ Usage:
   python3 bench/harness.py --bench chartqa --limit 20 \\
       --endpoint https://token.sensenova.ai/v1 \\
       --model sensenova-6.7-flash-lite --api-key KEY --out /tmp/chartqa.json
-  python3 bench/harness.py --bench all --limit 10 \\
-      --endpoint http://localhost:8080/v1 --model deepsight
 """
 
 import argparse
@@ -109,9 +107,8 @@ def usage_cost(usage: dict) -> float:
 
     Handles both raw counts (all prompt billed as cache miss) and the
     cache-aware fields deepseek returns (``prompt_cache_hit_tokens`` /
-    ``prompt_cache_miss_tokens``). Local vision (ollama) tokens that the
-    deepsight proxy folds into ``prompt_tokens`` are not separable here;
-    treat the whole input as the reasoning model's bill, conservative.
+    ``prompt_cache_miss_tokens``). Treat the whole input as the reasoning
+    model's bill, conservative.
     """
     hit = usage.get("prompt_cache_hit_tokens", 0)
     miss = usage.get("prompt_cache_miss_tokens", 0)
@@ -150,8 +147,8 @@ def score(bench: str, row: dict, pred: str) -> bool:
     """Score a prediction against a row's gold answer.
 
     Exact (normalized) match first; falls back to a word-boundary
-    substring match so verbose model answers (DeepSight tool-loop
-    sentences, reasoning traces) still score when they contain the
+    substring match so verbose model answers (tool-loop sentences,
+    reasoning traces) still score when they contain the
     gold value.
     """
     *_, afields, atype_field = BENCHES[bench]

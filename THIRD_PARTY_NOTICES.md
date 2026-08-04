@@ -18,13 +18,10 @@ their canonical upstreams are confirmed during the integration step.)
 
 ## Runtime dependencies
 
-- [FastAPI](https://fastapi.tiangolo.com) - MIT
-- [Uvicorn](https://www.uvicorn.org) - BSD-3-Clause
 - [httpx](https://www.python-httpx.org) - BSD-3-Clause
 - [Pillow](https://python-pillow.org) - HPND
 - [Pydantic](https://docs.pydantic.dev) - MIT
 - [pydantic-settings](https://github.com/pydantic/pydantic-settings) - MIT
-- [python-multipart](https://github.com/Kludex/python-multipart) - Apache-2.0
 
 ## Development dependencies
 

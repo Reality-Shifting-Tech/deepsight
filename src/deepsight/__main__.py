@@ -1,5 +1,4 @@
-"""CLI entry points: ``deepsight describe`` (device-native, no server),
-``deepsight serve`` (optional OpenAI-compatible adapter), ``deepsight doctor``."""
+"""CLI entry points: ``deepsight describe`` (device-native, no server), ``deepsight doctor``."""
 
 from __future__ import annotations
 
@@ -9,7 +8,6 @@ import subprocess
 import sys
 
 from .config import get_settings
-from .server import create_app
 
 
 def _describe(args: argparse.Namespace) -> None:
@@ -20,11 +18,6 @@ def _describe(args: argparse.Namespace) -> None:
     network, no model downloads, zero tokens. Fast and free.
     """
     settings = get_settings()
-    if settings.vision_backend != "native":
-        print(
-            "describe uses the native eyes (DEEPSIGHT_VISION_BACKEND=native).",
-            file=sys.stderr,
-        )
     bin_path = settings.vision_bin
     if not os.path.exists(bin_path):
         print(f"vision binary not found: {bin_path}", file=sys.stderr)
@@ -62,18 +55,6 @@ def _describe(args: argparse.Namespace) -> None:
     print("\n".join(sections).strip() or "(no text or scene detected)")
 
 
-def _serve(args: argparse.Namespace) -> None:
-    import uvicorn
-
-    settings = get_settings()
-    if args.host:
-        settings.host = args.host
-    if args.port:
-        settings.port = args.port
-    app = create_app(settings)
-    uvicorn.run(app, host=settings.host, port=settings.port, log_level=settings.log_level)
-
-
 def _doctor(args: argparse.Namespace) -> None:
     import httpx
 
@@ -82,10 +63,7 @@ def _doctor(args: argparse.Namespace) -> None:
 
     # native vision binary
     bin_path = settings.vision_bin
-    if settings.vision_backend == "native":
-        checks.append(("vision binary", os.path.exists(bin_path), bin_path))
-    else:
-        checks.append(("vision backend (ollama)", False, "set DEEPSIGHT_VISION_BACKEND=native"))
+    checks.append(("vision binary", os.path.exists(bin_path), bin_path))
 
     # reasoning backend
     try:
@@ -111,7 +89,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         prog="deepsight",
         description="Device-native vision: describe images with on-device Apple Vision. "
-        "No server required. `serve` is an optional OpenAI-compatible adapter.",
+        "No server required.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -121,16 +99,6 @@ def main() -> None:
     )
     describe.add_argument("image", help="path to the image file")
     describe.set_defaults(func=_describe)
-
-    serve = sub.add_parser(
-        "serve",
-        help="OPTIONAL: run the OpenAI-compatible server adapter (for clients that need HTTP)",
-    )
-    serve.add_argument("--host", default=None, help="bind host (default: from env/settings)")
-    serve.add_argument(
-        "--port", type=int, default=None, help="bind port (default: from env/settings)"
-    )
-    serve.set_defaults(func=_serve)
 
     doc = sub.add_parser("doctor", help="check native vision binary + reasoning connectivity")
     doc.set_defaults(func=_doctor)

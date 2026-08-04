@@ -14,13 +14,13 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from .backends import NativeVisionBackend, OllamaVisionBackend, OpenAICompatibleVisionBackend
+from .backends import NativeVisionBackend
 from .cache import PerceptionCache
 
-VisionBackendType = OllamaVisionBackend | OpenAICompatibleVisionBackend | NativeVisionBackend
+VisionBackendType = NativeVisionBackend
 
 SKETCH_PROMPT = (
-    "You are the perception module of a vision proxy. Analyze the image and "
+    "You are the perception module of DeepSight. Analyze the image and "
     "produce a COMPACT scene inventory. Be terse; this sketch is injected "
     "into a reasoning model's context, so token efficiency matters.\n\n"
     "Output EXACTLY this JSON shape (no markdown, no prose):\n"
@@ -40,20 +40,20 @@ SKETCH_PROMPT = (
 )
 
 TOOL_REGION_PROMPT = (
-    "You are the perception module of a vision proxy. The reasoning model "
+    "You are the perception module of DeepSight. The reasoning model "
     "asked a targeted question about a REGION of the image. Look ONLY at the "
     "region shown and answer directly and tersely (1-2 sentences). Do not "
     "mention the crop or the framing."
 )
 
 TOOL_OCR_PROMPT = (
-    "You are the perception module of a vision proxy. Transcribe ALL text "
+    "You are the perception module of DeepSight. Transcribe ALL text "
     "visible in the region shown, exactly as written, preserving line breaks. "
     "Output only the transcription."
 )
 
 TOOL_COUNT_PROMPT = (
-    "You are the perception module of a vision proxy. Count the number of "
+    "You are the perception module of DeepSight. Count the number of "
     "objects matching the description given, visible in the image shown. "
     "Look carefully; count every instance. Output ONLY the integer count, "
     "with no other text."

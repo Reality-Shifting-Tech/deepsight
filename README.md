@@ -24,14 +24,6 @@ deepsight describe screenshot.png
 # faces: 1
 ```
 
-For text-only LLMs that need interactive vision, DeepSight also ships an
-**optional** OpenAI-compatible server that runs a vision-session loop: the
-reasoning model gets a compact scene sketch up front and then asks for exactly
-what it needs using tool calls (`look`, `crop`, `ocr`, `zoom`). Each tool call
-is answered by a targeted, small vision-model pass. Cost scales with curiosity,
-not with image size. The server is an adapter, not the product; the device is
-the product.
-
 ## How it works
 
 ### describe: device-native (no server)
@@ -51,71 +43,11 @@ the product.
 +---------------------------------------------------+
 ```
 
-### serve: optional OpenAI-compatible adapter
-
-```
-+----------------------+
-|  Any OpenAI client   |  curl, openai SDK, OpenWebUI, LibreChat
-+----------------------+
-        |
-        |  POST /v1/chat/completions  (image_url content)
-        v
-+----------------------+
-|   deepsight server   |  FastAPI, OpenAI-compatible /v1 (optional)
-+----------------------+
-        |
-        |  vision session loop
-        v
-+---------------------------------------------------+
-| 1. sketch(image)      one VLM pass -> compact JSON |
-|                       scene inventory (objects,    |
-|                       text regions, layout)        |
-| 2. inject sketch + tool schemas into the context   |
-| 3. reasoning model emits look / crop / ocr / zoom  |
-| 4. bridge answers each call with a TARGETED VLM    |
-|    pass over just that region                      |
-| 5. repeat until the model is satisfied, then       |
-|    produce the final answer                        |
-+---------------------------------------------------+
-        |                           |
-        v                           v
-+------------------+     +----------------------+
-| reasoning backend |     |   vision backend     |
-| DeepSeek (default)|     | Ollama minicpm-v     |
-| or any OpenAI /   |     | Apple Vision native  |
-| Anthropic URL     |     | (zero tokens)        |
-+------------------+     +----------------------+
-        |                           |
-        +------------+--------------+
-                     v
-            +------------------+
-            | perception cache |
-            | content-addressed|
-            | by image + crop |
-            | hash, TTL       |
-            +------------------+
-```
-
-A perception cache makes repeated questions about the same image nearly free:
-every sketch and crop answer is content-addressed by image hash and crop hash,
-so the same region is never re-analyzed twice within the TTL.
-
-### Why this beats the one-shot description
-
-| | One-shot description bridge | Interactive session (DeepSight) |
-|---|---|---|
-| First pass | 300-500 token scene novel | ~60-120 token sketch |
-| "Error in bottom-right?" | model guesses or re-reads everything | targeted crop, exact answer |
-| 4K UI screenshot | 500 tokens, still vague | sketch + on-demand zooms |
-| Cost per question | fixed per image | proportional to looking |
-| Quality ceiling | description quality | the model's own curiosity |
-
-The full architecture and design rationale live in
-[docs/architecture.md](docs/architecture.md).
+The eyes are the compiled Apple Vision binary (`vision_eyes`, see
+[docs/architecture.md](docs/architecture.md) for the compile command). It runs
+in milliseconds on-device and burns zero tokens, zero GPU, zero network.
 
 ## Quickstart
-
-### describe (device-native, no server)
 
 Prerequisites: Python >= 3.11, [uv](https://docs.astral.sh/uv) (or pip), and on
 macOS a compiled Apple Vision binary (see
@@ -132,115 +64,22 @@ uv pip install -e .
 deepsight describe screenshot.png
 ```
 
-Set `DEEPSIGHT_VISION_BACKEND=native` and `DEEPSIGHT_VISION_BIN=/path/to/vision_eyes`
-to make native eyes the default vision backend everywhere (server included).
-
-### serve (optional OpenAI-compatible adapter)
-
-For clients that need HTTP (curl, openai SDK, OpenWebUI, LibreChat):
-
-```bash
-# A DeepSeek API key is needed for the default reasoning backend
-export DEEPSIGHT_REASONING_API_KEY=sk-...
-export DEEPSIGHT_VISION_BACKEND=native   # use Apple Vision eyes (zero tokens)
-# or: export DEEPSIGHT_VISION_BASE_URL=http://localhost:11434/v1  # Ollama minicpm-v
-
-deepsight serve --port 8080
-```
-
-The server listens on `http://localhost:8080/v1` by default. Once the first
-stable release is on PyPI you will also be able to `pip install deepsight` or
-`uv tool install deepsight`.
+Set `DEEPSIGHT_VISION_BIN=/path/to/vision_eyes` if the binary is not on your
+`PATH`.
 
 ## Configuration
 
-All configuration is via environment variables with a `DEEPSIGHT_` prefix
-(`DEEPSIGHT_HOST`, `DEEPSIGHT_VISION_BACKEND`, ...), optionally in a `.env`
-file.
+All configuration is via environment variables with a `DEEPSIGHT_` prefix,
+optionally in a `.env` file.
 
 | Variable | Default | Description |
 |---|---|---|
-| `DEEPSIGHT_REASONING_BASE_URL` | `https://api.deepseek.com/v1` | OpenAI-compatible reasoning backend base URL |
-| `DEEPSIGHT_REASONING_API_KEY` | *(required for serve)* | API key for the reasoning backend |
+| `DEEPSIGHT_VISION_BIN` | `vision_eyes` | Path to the native Apple Vision binary |
+| `DEEPSIGHT_REASONING_BASE_URL` | `https://api.deepseek.com/v1` | Optional OpenAI-compatible reasoning endpoint (vision-session loop) |
+| `DEEPSIGHT_REASONING_API_KEY` | *(optional)* | API key for the reasoning endpoint |
 | `DEEPSIGHT_REASONING_MODEL` | `deepseek-v4-flash` | Reasoning model name |
-| `DEEPSIGHT_VISION_BACKEND` | `ollama` | `native` = Apple Vision binary (zero tokens), `ollama` = local VLM |
-| `DEEPSIGHT_VISION_BIN` | `vision_eyes` | Path to the native vision binary (`native` backend) |
-| `DEEPSIGHT_VISION_BASE_URL` | `http://localhost:11434/v1` | OpenAI-compatible vision backend base URL (Ollama) |
-| `DEEPSIGHT_VISION_MODEL` | `minicpm-v` | Vision model name |
-| `DEEPSIGHT_PORT` | `8080` | HTTP port for the DeepSight server |
-| `MAX_TOOL_ROUNDS` | `8` | Maximum look/crop/ocr/zoom rounds per session |
-| `CACHE_TTL` | `3600` | Perception cache TTL in seconds |
-
-## Client examples
-
-**curl**
-
-```bash
-curl http://localhost:8080/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "deepseek-v4-flash",
-    "messages": [
-      {
-        "role": "user",
-        "content": [
-          {"type": "text", "text": "What does the error message say?"},
-          {"type": "image_url", "image_url": {"url": "https://example.com/screenshot.png"}}
-        ]
-      }
-    ]
-  }'
-```
-
-**openai Python SDK**
-
-```python
-from openai import OpenAI
-
-client = OpenAI(base_url="http://localhost:8080/v1", api_key="local")
-resp = client.chat.completions.create(
-    model="deepseek-v4-flash",
-    messages=[{
-        "role": "user",
-        "content": [
-            {"type": "text", "text": "Summarize this dashboard."},
-            {"type": "image_url", "image_url": {"url": "https://example.com/dashboard.png"}},
-        ],
-    }],
-)
-print(resp.choices[0].message.content)
-```
-
-**OpenWebUI / LibreChat**
-
-Add a custom OpenAI-compatible provider pointing at
-`http://localhost:8080/v1` with any API key. Models served by DeepSight appear
-automatically via `/v1/models`.
-
-## Benchmarks
-
-DeepSight is measured against two baselines on three public benchmarks:
-ChartQA, MathVista, and OCRBench-v2. The harness streams rows from the
-Hugging Face datasets-server API, so no datasets are downloaded locally.
-The headline metric is **tokens per correct answer**: efficiency and
-capability, not just accuracy.
-
-| Benchmark | Accuracy | Tokens per correct answer | Avg latency (s) |
-|---|---|---|---|
-| ChartQA (test, 5 rows) | direct 100% / oneshot 40% / DeepSight 80% | 582 / 3,105 / 39,674 | 2.4 / 4.8 / 33.9 |
-| MathVista (testmini, 5 rows) | direct 20% / oneshot 0% / DeepSight 60% | 3,765 / inf / 202,030 | 3.3 / 6.4 / 143.9 |
-| OCRBench-v2 (test, 5 rows) | direct 100% / oneshot 40% / DeepSight 100% | 1,946 / 6,319 / 102,320 | 4.2 / 5.5 / 59.3 |
-
-Setup: reasoning = DeepSeek V4 Flash, vision = senseNova-6.7-flash-lite,
-DeepSight loop capped at 30 look rounds, 5 rows per benchmark. DeepSight
-beats oneshot on accuracy on every benchmark (+40 pts ChartQA, +60 pts
-MathVista, +60 pts OCRBench) and wins tokens-per-correct on MathVista
-where oneshot scores zero; its token cost per correct answer is higher
-on ChartQA/OCRBench because the tool loop burns tokens per round. Full
-per-row records and scoring rules: `make bench` reproduces these numbers.
-
-Methodology, scoring rules, and how to reproduce the numbers are in
-[docs/benchmarks.md](docs/benchmarks.md).
+| `DEEPSIGHT_MAX_LOOK_ROUNDS` | `5` | Maximum look/crop/ocr/zoom rounds per session |
+| `DEEPSIGHT_CACHE_TTL_SECONDS` | `3600` | Perception cache TTL in seconds |
 
 ## Development
 
@@ -251,8 +90,7 @@ uv pip install -e '.[dev]'
 make lint        # ruff check . (zero-warning policy)
 make typecheck   # mypy src
 make test        # pytest
-make dev         # uvicorn with hot reload on :8080
-make bench       # three-way benchmark comparison (see docs/benchmarks.md)
+make bench       # benchmark comparison (baseline modes, see docs/benchmarks.md)
 make all         # lint + typecheck + test
 ```
 
