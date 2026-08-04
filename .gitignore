@@ -41,3 +41,9 @@ eval/results/
 .idea/
 .vscode/
 *.swp
+
+# Compiled artifacts (architecture-specific, rebuild from source)
+scripts/vision_eyes
+
+# Lockfile (uv not pinned in this repo)
+uv.lock
