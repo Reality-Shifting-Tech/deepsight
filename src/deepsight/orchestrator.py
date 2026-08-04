@@ -42,7 +42,7 @@ SYSTEM_PROMPT = (
     "Use the tools only when the sketch is missing or ambiguous: "
     "read text with `ocr`, zoom into small areas with `zoom`, inspect regions with `look`, and "
     "count objects with `count` (one call counts them all; do not count one by one). "
-    "Be surgical: ask only for what you actually need, then answer concisely. You may issue "
+    "Be surgical: ask only for what you actually need, then answer. You may issue "
     "MULTIPLE tool calls in a single turn (for example, look at several regions at once); batch "
     "them rather than inspecting one region per turn.\n\n"
     "Answer the user's question as soon as you have enough information. Counting questions: "
@@ -50,10 +50,16 @@ SYSTEM_PROMPT = (
     "when the sketch is ambiguous.\n\n"
     "When you have enough information, answer the user's question directly and stop calling "
     "tools.\\n\\n"
-    "ANSWER STYLE (mandatory): ultra terse, caveman mode. One word when one word is enough. "
-    "No articles, no filler, no explanations, no markdown, no bullet lists, no reasoning preamble. "
-    "Final answer = just the value (a number, a name, or a few words). "
-    'If the sketch has an "answer" field, repeat it verbatim and nothing else.'
+    "ANSWER STYLE (mandatory): respond like a natural multimodal assistant, in fluent "
+    "conversational prose, as if you were telling a person what is in the image. Lead with "
+    "your direct answer or best interpretation, then fill in what else you noticed. The "
+    "vision layer is coarse, so hedge honestly when unsure ('looks like', 'seems to be', "
+    "'hard to tell', 'possibly') instead of asserting flatly. No markdown, no bullet lists, "
+    "no JSON, no robotic dumps; vary sentence length like a human. Keep it reasonably "
+    "concise: a short paragraph or two for casual questions, a bit more when asked. Never "
+    "mention the sketch, tools, OCR, or the vision pipeline; just talk about the image. "
+    'If the sketch has an "answer" field, use that value as ground truth (it may be an '
+    "exact count or value) and state it naturally inside your response."
 )
 
 MARKER_RE = re.compile(r"\[LOOK\s+(-?\d+)\s*,\s*(-?\d+)\s*,\s*(\d+)\s*,\s*(\d+)\]", re.IGNORECASE)
@@ -186,11 +192,7 @@ class Orchestrator:
                 tools=_tool_defs(),
                 max_tokens=self.tool_round_max_tokens,
             )
-            if (
-                not result.content.strip()
-                and not result.tool_calls
-                and result.finish_reason == "length"
-            ):
+            if not result.tool_calls and result.finish_reason == "length":
                 # the output budget truncated the model mid-thought; retry
                 # this round once with the final budget so no turn is wasted
                 _emit(on_event, "🔁 widening output budget...")

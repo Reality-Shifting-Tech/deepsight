@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Natural conversational answers.** The vision-session loop no longer forces
+  an ultra-terse "caveman" answer style. The orchestrator prompt now asks the
+  reasoning model to respond like a natural multimodal assistant: lead with the
+  interpretation, hedge honestly when the native vision layer is coarse, and
+  describe the image in fluent prose without exposing the sketch/tool pipeline.
+  Truncated mid-answer generations are now retried with the final token budget,
+  so longer natural-language answers no longer get clipped.
+
 ### Removed
 
 - **Server removed.** The FastAPI/uvicorn OpenAI-compatible server adapter
