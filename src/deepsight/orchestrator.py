@@ -40,13 +40,17 @@ SYSTEM_PROMPT = (
     "You are DeepSight, an AI with interactive vision. You can inspect images by calling tools.\n\n"
     "An image is attached to this conversation. A scene sketch (JSON) describing it was generated "
     "first. Use the sketch as your primary source: answer directly from it whenever it contains "
-    "the information you need. Use the tools to LOOK at specific regions when you need detail: "
-    "read text with `ocr`, zoom into small areas with `zoom`, inspect regions with `look`. "
+    'the information you need. If the sketch has an "answer" field, respond with that value '
+    "immediately and stop: do not re-derive it, do not call tools. "
+    "Use the tools only when the sketch is missing or ambiguous: "
+    "read text with `ocr`, zoom into small areas with `zoom`, inspect regions with `look`, and "
+    "count objects with `count` (one call counts them all; do not count one by one). "
     "Be surgical: ask only for what you actually need, then answer concisely. You may issue "
     "MULTIPLE tool calls in a single turn (for example, look at several regions at once); batch "
     "them rather than inspecting one region per turn.\n\n"
     "Answer the user's question as soon as you have enough information. Counting questions: "
-    "prefer the sketch's object list; only look at individual items to disambiguate.\n\n"
+    'prefer the sketch\'s object list or "answer" field; only call `count` '
+    "when the sketch is ambiguous.\n\n"
     "When you have enough information, answer the user's question directly and stop calling tools."
 )
 
@@ -128,7 +132,7 @@ class Orchestrator:
         image = load_image(image_url)
 
         # 1. sketch
-        sketch = self.perception.sketch(image)
+        sketch = self.perception.sketch(image, question=user_text)
         sketch_block = f"\nScene sketch:\n{sketch}\n" if sketch else "\n(no sketch)\n"
 
         messages: list[dict[str, Any]] = [
@@ -213,13 +217,28 @@ class Orchestrator:
                 cache_hits=self.perception.cache_hits,
             )
 
-        # hit the round cap: return the model's last real content if any
-        final = last_content or "[deepsight] reached max look rounds without a final answer."
+        # hit the round cap: force a final answer with one last no-tools call
+        messages.append(
+            {
+                "role": "user",
+                "content": (
+                    "Tool budget exhausted. Do not call any more tools. Give "
+                    "your final answer to the question now, based only on "
+                    "everything you have observed so far."
+                ),
+            }
+        )
+        final = self.reasoning.chat(messages, tools=None)
+        prompt_tokens += final.prompt_tokens
+        completion_tokens += final.completion_tokens
+        final_content = (final.content or last_content or "").strip()
+        if not final_content:
+            final_content = "[deepsight] reached max look rounds without a final answer."
         return SessionResult(
-            content=final,
+            content=final_content,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
-            rounds=rounds,
+            rounds=rounds + 1,
             tool_calls=tool_calls_total,
             cache_hits=self.perception.cache_hits,
         )

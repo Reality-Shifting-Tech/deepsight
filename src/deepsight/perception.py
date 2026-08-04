@@ -28,8 +28,15 @@ SKETCH_PROMPT = (
     '"text": ["visible text fragments, transcribed"], '
     '"layout": "one line describing spatial arrangement", '
     '"palette": ["dominant colors"], '
-    '"anomalies": ["anything notable: errors, highlights, warnings"]}\n'
-    "If a list is empty, output []."
+    '"anomalies": ["anything notable: errors, highlights, warnings"], '
+    '"answer": "if the question below can be answered from the image, give '
+    'the answer here directly, otherwise omit this key"}\n'
+    "If a list is empty, output [].\n\n"
+    "The reasoning model will be asked a QUESTION about this image. Make sure "
+    "the sketch contains everything needed to answer it: exact counts of "
+    "objects, exact text values, labels, axis values, and measurements. For "
+    "counting questions, state the exact number of each countable object type "
+    'in the objects list AND put the final count in "answer".'
 )
 
 TOOL_REGION_PROMPT = (
@@ -43,6 +50,13 @@ TOOL_OCR_PROMPT = (
     "You are the perception module of a vision proxy. Transcribe ALL text "
     "visible in the region shown, exactly as written, preserving line breaks. "
     "Output only the transcription."
+)
+
+TOOL_COUNT_PROMPT = (
+    "You are the perception module of a vision proxy. Count the number of "
+    "objects matching the description given, visible in the image shown. "
+    "Look carefully; count every instance. Output ONLY the integer count, "
+    "with no other text."
 )
 
 LOOK_RE = re.compile(r"\[LOOK\s+(-?\d+)\s*,\s*(-?\d+)\s*,\s*(\d+)\s*,\s*(\d+)\]", re.IGNORECASE)
@@ -110,6 +124,29 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
             "required": ["x", "y", "w", "h"],
         },
     ),
+    ToolDefinition(
+        name="count",
+        description=(
+            "Count how many objects matching a description appear in the image "
+            "(or a region of it). Describe the object precisely: color, shape, "
+            "type. Returns a single integer. Use for counting questions instead "
+            "of inspecting items one by one."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "what": {
+                    "type": "string",
+                    "description": "description of the objects to count",
+                },
+                "x": {"type": "number", "description": "left edge, % of width"},
+                "y": {"type": "number", "description": "top edge, % of height"},
+                "w": {"type": "number", "description": "width, % of image width"},
+                "h": {"type": "number", "description": "height, % of image height"},
+            },
+            "required": ["what"],
+        },
+    ),
 ]
 
 
@@ -154,9 +191,7 @@ class Perception:
         crop = img.crop(box)
         if zoom and max(crop.size) < 512:
             scale = max(1, 512 // max(crop.size))
-            crop = crop.resize(
-                (crop.width * scale, crop.height * scale), Image.Resampling.LANCZOS
-            )
+            crop = crop.resize((crop.width * scale, crop.height * scale), Image.Resampling.LANCZOS)
         import io
 
         buf = io.BytesIO()
@@ -181,7 +216,7 @@ class Perception:
             self.cache.put(self.cache.image_hash(image_bytes), region, kind, result.text)
         return result.text, False
 
-    def sketch(self, image: Any) -> str:
+    def sketch(self, image: Any, question: str | None = None) -> str:
         """Produce the compact scene inventory JSON (or '' if disabled)."""
         if not self.sketch_enabled:
             return ""
@@ -189,14 +224,18 @@ class Perception:
 
         buf = io.BytesIO()
         image.save(buf, format="PNG")
-        text, _ = self._ask(SKETCH_PROMPT, buf.getvalue(), "sketch", None)
+        prompt = SKETCH_PROMPT
+        if question:
+            prompt = prompt + f"\nQuestion to prepare for: {question}"
+        kind = f"sketch:{question}" if question else "sketch"
+        text, _ = self._ask(prompt, buf.getvalue(), kind, None)
         return text
 
     # -- tools ------------------------------------------------------------------
 
     def execute(self, name: str, args: dict[str, Any], image: Any) -> str:
         """Execute one vision tool call against the image."""
-        if name not in {"look", "ocr", "zoom"}:
+        if name not in {"look", "ocr", "zoom", "count"}:
             return f"unknown tool: {name}"
         x = float(args.get("x", 0))
         y = float(args.get("y", 0))
@@ -207,6 +246,11 @@ class Perception:
         if name == "ocr":
             text, _ = self._ask(TOOL_OCR_PROMPT, region_bytes, "ocr", box)
             return f"OCR of region ({x:.0f}%,{y:.0f}%,{w:.0f}%,{h:.0f}%): {text}"
+        if name == "count":
+            what = str(args.get("what", "objects"))
+            prompt = TOOL_COUNT_PROMPT + f"\nCount: {what}"
+            text, _ = self._ask(prompt, region_bytes, f"count:{what}", box)
+            return f"count of '{what}' in region ({x:.0f}%,{y:.0f}%,{w:.0f}%,{h:.0f}%): {text}"
         prompt = TOOL_REGION_PROMPT + f"\nRegion: x={x:.0f}%, y={y:.0f}%, w={w:.0f}%, h={h:.0f}%."
         text, _ = self._ask(prompt, region_bytes, name, box)
         return f"{name} region ({x:.0f}%,{y:.0f}%,{w:.0f}%,{h:.0f}%): {text}"  # noqa: E501

@@ -72,7 +72,7 @@ def test_unknown_tool(fake_vision, image):
 
 def test_tool_definitions_shape():
     names = {t.name for t in TOOL_DEFINITIONS}
-    assert names == {"look", "ocr", "zoom"}
+    assert names == {"look", "ocr", "zoom", "count"}
     for t in TOOL_DEFINITIONS:
         assert t.parameters["type"] == "object"
         assert "required" in t.parameters

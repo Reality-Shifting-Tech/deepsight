@@ -66,14 +66,16 @@ def test_text_marker_fallback(fake_reasoning, fake_vision, png_data_url):
 
 def test_max_rounds_cap(fake_reasoning, fake_vision, png_data_url):
     look = ToolCall(id="c1", name="look", arguments={"x": 0, "y": 0, "w": 50, "h": 50})
-    reasoning = fake_reasoning([simple_result("", tool_calls=[look])] * 5)
+    reasoning = fake_reasoning(
+        [simple_result("", tool_calls=[look])] * 5 + [simple_result("final answer")]
+    )
     vision = fake_vision(text="x", prompt=4, completion=2)
     orch = make_orchestrator(reasoning, vision, max_look_rounds=5)
 
     result = orch.run(png_data_url, "keep looking")
 
-    assert result.content.startswith("[deepsight] reached max look rounds")
-    assert result.rounds == 5
+    assert result.content == "final answer"
+    assert result.rounds == 6
     assert result.tool_calls == 5
 
 
