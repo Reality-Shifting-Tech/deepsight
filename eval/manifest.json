@@ -1,0 +1,200 @@
+{
+  "description": "DeepSight eyes regression manifest. Golden = user-validated ground truth; synthetic = deterministic; public = Wikimedia Commons, title-anchored (see eval/images/public/.sources.json). Expected fields are anchored to current eyes behavior so regressions fail loudly; known weaknesses are documented in 'note'.",
+  "images": [
+    {
+      "id": "golden-1980-philly",
+      "path": "/Users/eliasstevenson/.hermes/cache/images/img_38e2f9b7f1ae.jpg",
+      "source": "golden",
+      "note": "1980 Philadelphia four-sport group photo (Erving/McGraw/Jaworski/Peeters). OCR reads SIXERS jersey; sports signals from grid-upscaled crops.",
+      "expected": {
+        "ocr_contains": ["SIXERS"],
+        "scene_top1": "people",
+        "sports_present": ["baseball", "ice hockey"],
+        "sports_min": 2
+      }
+    },
+    {
+      "id": "golden-sga-okc",
+      "path": "/Users/eliasstevenson/.hermes/cache/images/img_d47a8609a732.jpg",
+      "source": "golden",
+      "note": "SGA mid-action on hardwood, OKC Thunder jersey. Upscaled OCR reads THUNDE. scene_top1 varies between runs (basketball vs ballgames) — expect the stable ballgames label top-3.",
+      "expected": {
+        "ocr_contains": ["THUNDE"],
+        "scene_contains": [{"label": "ballgames", "rank": 3}],
+        "sports_present": ["basketball"]
+      }
+    },
+    {
+      "id": "golden-unistellar",
+      "path": "/Users/eliasstevenson/.hermes/cache/images/img_e9df15610ee6.jpg",
+      "source": "golden",
+      "note": "UNISTELLAR smart-telescope brand photo. KNOWN WEAKNESS: hat -> baseball false positive (0.80) is anchored on purpose; fixing it is a future change that must update this entry.",
+      "expected": {
+        "ocr_contains": ["UNISTELLAR"],
+        "scene_top1": "people",
+        "sports_present": ["baseball"]
+      }
+    },
+    {
+      "id": "golden-jellyfish-art",
+      "path": "/Users/eliasstevenson/.hermes/cache/images/img_ffff21fc8356.jpg",
+      "source": "golden",
+      "note": "Blue-toned abstract/jellyfish art. Weak scene confidences (0.08) are the honest ceiling; assert the signals that are real.",
+      "expected": {
+        "scene_contains": [{"label": "jellyfish", "rank": 3}],
+        "humans_zero": true
+      }
+    },
+    {
+      "id": "synth-solid-red",
+      "path": "images/synthetic/solid-red.png",
+      "source": "synthetic",
+      "note": "Flat red canvas: no text, no people, no sports.",
+      "expected": {
+        "ocr_empty": true,
+        "humans_zero": true,
+        "sports_absent": true
+      }
+    },
+    {
+      "id": "synth-solid-blue",
+      "path": "images/synthetic/solid-blue.png",
+      "source": "synthetic",
+      "note": "Flat blue canvas: no text, no people.",
+      "expected": {
+        "ocr_empty": true,
+        "humans_zero": true
+      }
+    },
+    {
+      "id": "synth-text-stop",
+      "path": "images/synthetic/text-stop.png",
+      "source": "synthetic",
+      "note": "Red card with bold white STOP: OCR must read it.",
+      "expected": {
+        "ocr_contains": ["STOP"],
+        "humans_zero": true
+      }
+    },
+    {
+      "id": "synth-text-card",
+      "path": "images/synthetic/text-card.png",
+      "source": "synthetic",
+      "note": "White card with black DeepSight + SALE 50% OFF lines.",
+      "expected": {
+        "ocr_contains": ["DeepSight"],
+        "humans_zero": true
+      }
+    },
+    {
+      "id": "synth-rect",
+      "path": "images/synthetic/rect.png",
+      "source": "synthetic",
+      "note": "Single black rectangle on white: rectangle detector must fire.",
+      "expected": {
+        "rectangles_min": 1,
+        "ocr_empty": true
+      }
+    },
+    {
+      "id": "public-baseball",
+      "path": "images/public/baseball.jpg",
+      "source": "public",
+      "note": "Commons 'Pitcher (PSF).png' — public-domain line drawing of a pitcher. Weak sports signal (0.11) barely clears the 0.10 floor; drawing detection is part of the test.",
+      "expected": {
+        "sports_present": ["baseball"],
+        "scene_contains": [{"label": "illustrations", "rank": 3}]
+      }
+    },
+    {
+      "id": "public-hockey",
+      "path": "images/public/hockey.jpg",
+      "source": "public",
+      "note": "Commons 'Yost Ice Arena, Michigan Ice Hockey Game During Intermission' — arena interior, NCAA championship banner text.",
+      "expected": {
+        "ocr_contains": ["NCAA"],
+        "sports_present": ["ice hockey"]
+      }
+    },
+    {
+      "id": "public-tennis",
+      "path": "images/public/tennis.jpg",
+      "source": "public",
+      "note": "Commons 'Margaret Court 1964' — vintage B&W tennis photo. KNOWN GAP: racket identifier did not fire; tennis absent from sports line. Anchored to title truth so the fix is measurable.",
+      "expected": {
+        "sports_present": ["tennis"],
+        "faces_min": 1
+      }
+    },
+    {
+      "id": "public-surfing",
+      "path": "images/public/surfing.jpg",
+      "source": "public",
+      "note": "Commons 'A surfer at the wave edit'. Scene reads surfing(0.94); surfboard not in SPORT_MAP, so sports line only gets generic sports equipment. Gap candidate for map expansion.",
+      "expected": {
+        "scene_contains": [{"label": "surfing", "rank": 5}],
+        "sports_present": ["sports equipment"]
+      }
+    },
+    {
+      "id": "public-soccer",
+      "path": "images/public/soccer.jpg",
+      "source": "public",
+      "note": "Commons 'Championship-Soccer-Stadium-SW-View-2024'. KNOWN FALSE POSITIVE: stadium triggers 'arena' -> ice hockey(0.85). Title truth is soccer. Anchored so the map fix is measurable.",
+      "expected": {
+        "sports_present": ["soccer"],
+        "scene_contains": [{"label": "structure", "rank": 5}]
+      }
+    },
+    {
+      "id": "public-stop-sign",
+      "path": "images/public/stop-sign.jpg",
+      "source": "public",
+      "note": "Commons stop sign at an intersection; OCR must read the sign text.",
+      "expected": {
+        "ocr_contains": ["STOP", "ONCOMING TRAFFIC"],
+        "scene_contains": [{"label": "street_sign", "rank": 3}],
+        "rectangles_min": 1
+      }
+    },
+    {
+      "id": "public-eiffel",
+      "path": "images/public/eiffel.jpg",
+      "source": "public",
+      "note": "Commons 'Tour Eiffel Wikimedia Commons'. KNOWN GAP: tower too small in frame, scene reads outdoor/sky/grass — no tower label. Anchored to what is true AND emitted.",
+      "expected": {
+        "scene_contains": [{"label": "outdoor", "rank": 3}]
+      }
+    },
+    {
+      "id": "public-pizza",
+      "path": "images/public/pizza.jpg",
+      "source": "public",
+      "note": "Commons Round Table Pizza storefront — signage OCR test.",
+      "expected": {
+        "ocr_contains": ["PIZZA"],
+        "sports_absent": true
+      }
+    },
+    {
+      "id": "public-leopard",
+      "path": "images/public/cat.jpg",
+      "source": "public",
+      "note": "Commons 'Panthera pardus close up' — leopard. Animal signal lives in SCENE (feline/leopard 0.96), not the animals: section. Documents that animals-section coverage is uneven.",
+      "expected": {
+        "scene_contains": [{"label": "leopard", "rank": 3}],
+        "sports_absent": true,
+        "humans_zero": true
+      }
+    },
+    {
+      "id": "public-street",
+      "path": "images/public/street.jpg",
+      "source": "public",
+      "note": "Commons Central Park NYC cropped — bridge scene.",
+      "expected": {
+        "scene_contains": [{"label": "bridge", "rank": 3}]
+      }
+    }
+  ]
+}

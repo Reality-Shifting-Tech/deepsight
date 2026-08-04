@@ -29,6 +29,11 @@ htmlcov/
 # Bench output
 bench/results*.json
 
+# Eval artifacts (images, binaries, results are all regenerable)
+eval/images/
+eval/.cache/
+eval/results/
+
 # macOS
 .DS_Store
 
