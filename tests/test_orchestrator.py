@@ -79,6 +79,21 @@ def test_max_rounds_cap(fake_reasoning, fake_vision, png_data_url):
     assert result.tool_calls == 5
 
 
+def test_on_event_milestones(fake_reasoning, fake_vision, png_data_url):
+    look = ToolCall(id="c1", name="look", arguments={"x": 0, "y": 0, "w": 50, "h": 50})
+    reasoning = fake_reasoning([simple_result("", tool_calls=[look]), simple_result("42")])
+    vision = fake_vision(text="a bar", prompt=4, completion=2)
+    orch = make_orchestrator(reasoning, vision)
+
+    events: list[str] = []
+    orch.run(png_data_url, "What value?", on_event=events.append)
+
+    assert events[0] == "👁️ viewing image..."
+    assert events[1] == "✏️ sketching scene..."
+    assert any(e.startswith("🔍 looking") for e in events)
+    assert events[-1] == "✅ answering..."
+
+
 def test_sketch_disabled(fake_reasoning, fake_vision, png_data_url):
     reasoning = fake_reasoning([simple_result("ok")])
     vision = fake_vision(text="sketch text", prompt=3, completion=1)

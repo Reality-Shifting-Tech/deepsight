@@ -37,6 +37,8 @@ class ReasoningResult:
     finish_reason: str
     prompt_tokens: int
     completion_tokens: int
+    cache_hit_tokens: int = 0
+    cache_miss_tokens: int = 0
 
     @property
     def wants_tools(self) -> bool:
@@ -47,6 +49,8 @@ class ReasoningResult:
         return {
             "prompt_tokens": self.prompt_tokens,
             "completion_tokens": self.completion_tokens,
+            "prompt_cache_hit_tokens": self.cache_hit_tokens,
+            "prompt_cache_miss_tokens": self.cache_miss_tokens,
         }
 
 
@@ -60,12 +64,14 @@ class ReasoningBackend:
         model: str = "deepseek-v4-flash",
         temperature: float = 0.2,
         timeout: float = 120.0,
+        max_tokens: int | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
         self.temperature = temperature
         self.timeout = timeout
+        self.max_tokens = max_tokens
 
     def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
@@ -77,14 +83,23 @@ class ReasoningBackend:
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
+        max_tokens: int | None = None,
     ) -> ReasoningResult:
-        """Run one chat turn; return content + any tool calls."""
+        """Run one chat turn; return content + any tool calls.
+
+        ``max_tokens`` overrides the constructor default per call (used by
+        the orchestrator to budget tool rounds).
+        """
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
             "temperature": self.temperature,
             "stream": False,
         }
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
+        elif self.max_tokens is not None:
+            payload["max_tokens"] = self.max_tokens
         if tools:
             payload["tools"] = tools
         with httpx.Client(timeout=self.timeout) as client:
@@ -113,6 +128,8 @@ class ReasoningBackend:
             finish_reason=choice.get("finish_reason", "stop"),
             prompt_tokens=int(usage.get("prompt_tokens", 0)),
             completion_tokens=int(usage.get("completion_tokens", 0)),
+            cache_hit_tokens=int(usage.get("prompt_cache_hit_tokens", 0)),
+            cache_miss_tokens=int(usage.get("prompt_cache_miss_tokens", 0)),
         )
 
 
@@ -155,14 +172,29 @@ class OllamaVisionBackend:
         model: str = "minicpm-v:latest",
         temperature: float = 0.0,
         timeout: float = 120.0,
+        max_output_tokens: int | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.temperature = temperature
         self.timeout = timeout
+        self.max_output_tokens = max_output_tokens
 
-    def ask(self, prompt: str, image_bytes: bytes) -> VisionResult:
-        """Ask the VLM a question about an image, returning text + usage."""
+    def ask(
+        self,
+        prompt: str,
+        image_bytes: bytes,
+        max_output_tokens: int | None = None,
+    ) -> VisionResult:
+        """Ask the VLM a question about an image, returning text + usage.
+
+        ``max_output_tokens`` overrides the constructor default per call
+        (the sketch gets no cap; tool observations get a small one).
+        """
+        options: dict[str, Any] = {"temperature": self.temperature}
+        cap = max_output_tokens if max_output_tokens is not None else self.max_output_tokens
+        if cap is not None:
+            options["num_predict"] = cap
         payload = {
             "model": self.model,
             "messages": [
@@ -173,7 +205,7 @@ class OllamaVisionBackend:
                 }
             ],
             "stream": False,
-            "options": {"temperature": self.temperature},
+            "options": options,
         }
         with httpx.Client(timeout=self.timeout) as client:
             resp = client.post(f"{self.base_url}/api/chat", json=payload)
@@ -197,12 +229,14 @@ class OpenAICompatibleVisionBackend:
         model: str = "sensenova-6.7-flash-lite",
         temperature: float = 0.0,
         timeout: float = 120.0,
+        max_output_tokens: int | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
         self.temperature = temperature
         self.timeout = timeout
+        self.max_output_tokens = max_output_tokens
 
     def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
@@ -210,10 +244,15 @@ class OpenAICompatibleVisionBackend:
             headers["Authorization"] = f"Bearer {self.api_key}"
         return headers
 
-    def ask(self, prompt: str, image_bytes: bytes) -> VisionResult:
+    def ask(
+        self,
+        prompt: str,
+        image_bytes: bytes,
+        max_output_tokens: int | None = None,
+    ) -> VisionResult:
         """Ask the VLM a question about an image, returning text + usage."""
         data_url = "data:image/png;base64," + base64.b64encode(image_bytes).decode()
-        payload = {
+        payload: dict[str, Any] = {
             "model": self.model,
             "messages": [
                 {
@@ -227,6 +266,9 @@ class OpenAICompatibleVisionBackend:
             "temperature": self.temperature,
             "stream": False,
         }
+        cap = max_output_tokens if max_output_tokens is not None else self.max_output_tokens
+        if cap is not None:
+            payload["max_tokens"] = cap
         with httpx.Client(timeout=self.timeout) as client:
             resp = client.post(
                 f"{self.base_url}/chat/completions",

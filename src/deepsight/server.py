@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -78,6 +78,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         api_key=settings.reasoning_key,
         model=settings.reasoning_model,
         temperature=settings.reasoning_temperature,
+        max_tokens=settings.reasoning_max_tokens,
     )
     vision = build_vision_backend(settings)
     cache = PerceptionCache(ttl_seconds=settings.cache_ttl_seconds)
@@ -87,6 +88,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         cache=cache if settings.cache_enabled else None,
         max_look_rounds=settings.max_look_rounds,
         sketch_enabled=settings.sketch_enabled,
+        tool_round_max_tokens=settings.reasoning_tool_round_max_tokens,
+        final_max_tokens=settings.reasoning_max_tokens,
+        vision_tool_max_tokens=settings.vision_tool_max_tokens,
     )
 
     app = FastAPI(
@@ -126,13 +130,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not image_url:
             raise HTTPException(status_code=400, detail="no image_url found in messages")
 
-        session = await _run_session(orchestrator, image_url, user_text)
-
         if req.stream:
             return StreamingResponse(
-                _stream_response(req.model or settings.reasoning_model, session),
+                _stream_live(
+                    orchestrator,
+                    req.model or settings.reasoning_model,
+                    image_url,
+                    user_text,
+                ),
                 media_type="text/event-stream",
             )
+        session = await _run_session(orchestrator, image_url, user_text)
         return _openai_response(req.model or settings.reasoning_model, session)
 
     return app
@@ -160,12 +168,20 @@ def _extract_content(req: ChatRequest) -> tuple[str | None, str]:
     return image_url, "\n".join(t for t in texts if t.strip())
 
 
-async def _run_session(orchestrator: Orchestrator, image_url: str, user_text: str) -> Any:
+async def _run_session(
+    orchestrator: Orchestrator,
+    image_url: str,
+    user_text: str,
+    on_event: Callable[[str], None] | None = None,
+) -> Any:
     """Run the vision session off the event loop (blocking backend calls)."""
     import asyncio
 
     return await asyncio.to_thread(
-        orchestrator.run, image_url, user_text or "What do you see in this image?"
+        orchestrator.run,
+        image_url,
+        user_text or "What do you see in this image?",
+        on_event,
     )
 
 
@@ -182,15 +198,38 @@ def _openai_response(model: str, session: Any) -> dict[str, Any]:
                 "finish_reason": "stop",
             }
         ],
-        "usage": _usage_sum(session.prompt_tokens, session.completion_tokens),
+        "usage": _usage_sum(
+            session.prompt_tokens,
+            session.completion_tokens,
+            session.cache_hit_tokens,
+            session.cache_miss_tokens,
+        ),
     }
 
 
-async def _stream_response(model: str, session: Any) -> AsyncIterator[str]:
-    """Emit the session answer as an OpenAI SSE stream."""
+async def _stream_live(
+    orchestrator: Orchestrator,
+    model: str,
+    image_url: str,
+    user_text: str,
+) -> AsyncIterator[str]:
+    """Stream an OpenAI SSE session with live progress status chunks.
+
+    The vision session runs as a background task; each milestone event
+    from the orchestrator (e.g. "👁️ viewing image...") is emitted
+    immediately as a ``delta.status`` chunk, and the final answer arrives
+    as a normal ``delta.content`` chunk when the session completes.
+    """
+    import asyncio
+    import queue as q
+
+    events: q.Queue[str] = q.Queue()
+    task = asyncio.create_task(
+        _run_session(orchestrator, image_url, user_text, on_event=events.put)
+    )
+
     chunk_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
     created = int(time.time())
-    usage = _usage_sum(session.prompt_tokens, session.completion_tokens)
 
     def sse(payload: dict[str, Any]) -> str:
         return f"data: {json.dumps(payload)}\n\n"
@@ -204,13 +243,48 @@ async def _stream_response(model: str, session: Any) -> AsyncIterator[str]:
             "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}],
         }
     )
+
+    while True:
+        try:
+            status = events.get_nowait()
+        except q.Empty:
+            if task.done():
+                break
+            await asyncio.sleep(0.05)
+            continue
+        yield sse(
+            {
+                "id": chunk_id,
+                "object": "chat.completion.chunk",
+                "created": created,
+                "model": model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"role": "assistant", "status": status},
+                        "finish_reason": None,
+                    }
+                ],
+            }
+        )
+
+    session = task.result()
+    usage = _usage_sum(
+        session.prompt_tokens,
+        session.completion_tokens,
+        session.cache_hit_tokens,
+        session.cache_miss_tokens,
+    )
+
     yield sse(
         {
             "id": chunk_id,
             "object": "chat.completion.chunk",
             "created": created,
             "model": model,
-            "choices": [{"index": 0, "delta": {"content": session.content}, "finish_reason": None}],
+            "choices": [
+                {"index": 0, "delta": {"content": session.content}, "finish_reason": None}
+            ],
         }
     )
     yield sse(

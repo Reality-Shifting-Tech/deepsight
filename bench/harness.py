@@ -24,6 +24,13 @@ from collections import defaultdict
 
 DS = "https://datasets-server.huggingface.co"
 
+# deepseek-v4-flash list prices (USD per 1M tokens), from api-docs.deepseek.com.
+# Cache-hit input is 50x cheaper than cache-miss input; output is the
+# expensive line. Used to report billed cost instead of raw token counts.
+PRICE_INPUT_HIT = 0.0028
+PRICE_INPUT_MISS = 0.14
+PRICE_OUTPUT = 0.28
+
 BENCHES = {
     # name: (dataset, config, split, image_field, question_field, answer_fields, answer_type_field)
     "chartqa": (
@@ -95,6 +102,24 @@ def normalize(s: str) -> str:
     s = re.sub(r"^\$", "", s)
     s = re.sub(r"[,%]", "", s)
     return s
+
+
+def usage_cost(usage: dict) -> float:
+    """Billed USD for one usage dict at deepseek-v4-flash list prices.
+
+    Handles both raw counts (all prompt billed as cache miss) and the
+    cache-aware fields deepseek returns (``prompt_cache_hit_tokens`` /
+    ``prompt_cache_miss_tokens``). Local vision (ollama) tokens that the
+    deepsight proxy folds into ``prompt_tokens`` are not separable here;
+    treat the whole input as the reasoning model's bill, conservative.
+    """
+    hit = usage.get("prompt_cache_hit_tokens", 0)
+    miss = usage.get("prompt_cache_miss_tokens", 0)
+    prompt = usage.get("prompt_tokens", 0)
+    if not hit and not miss:
+        miss = prompt
+    out = usage.get("completion_tokens", 0)
+    return (hit * PRICE_INPUT_HIT + miss * PRICE_INPUT_MISS + out * PRICE_OUTPUT) / 1_000_000
 
 
 def extract_final(raw: str) -> str:
@@ -238,7 +263,16 @@ def main():
     benches = list(BENCHES) if args.bench == "all" else [args.bench]
     results = {}
     grand = defaultdict(
-        lambda: {"n": 0, "correct": 0, "tokens_in": 0, "tokens_out": 0, "latency": 0.0}
+        lambda: {
+            "n": 0,
+            "correct": 0,
+            "tokens_in": 0,
+            "tokens_out": 0,
+            "tokens_hit": 0,
+            "tokens_miss": 0,
+            "cost_usd": 0.0,
+            "latency": 0.0,
+        }
     )
 
     for bench in benches:
@@ -265,6 +299,9 @@ def main():
             per["correct"] += 1 if correct else 0
             per["tokens_in"] += usage.get("prompt_tokens", 0)
             per["tokens_out"] += usage.get("completion_tokens", 0)
+            per["tokens_hit"] += usage.get("prompt_cache_hit_tokens", 0)
+            per["tokens_miss"] += usage.get("prompt_cache_miss_tokens", 0)
+            per["cost_usd"] += usage_cost(usage)
             per["latency"] += lat
             out_rows.append(
                 {
@@ -274,6 +311,7 @@ def main():
                     "gold": str(row["answer"] if bench != "chartqa" else row["label"]),
                     "correct": correct,
                     "latency_s": round(lat, 2),
+                    "cost_usd": round(usage_cost(usage), 6),
                     "tokens": usage,
                 }
             )
@@ -294,8 +332,11 @@ def main():
             if per["correct"]
             else float("inf")
         )
+        cost_per_correct = per["cost_usd"] / per["correct"] if per["correct"] else float("inf")
         print(
             f"{bench:10s} n={per['n']:3d} acc={acc:.2%}  tok/correct={tok_per_correct:8.1f}  "
+            f"$ /correct={cost_per_correct:.4f}  "
+            f"hit={per['tokens_hit']} miss={per['tokens_miss']}  "
             f"avg_lat={per['latency'] / max(per['n'], 1):.1f}s"
         )
 

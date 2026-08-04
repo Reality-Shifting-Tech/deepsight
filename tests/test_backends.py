@@ -85,6 +85,59 @@ def fake_http(monkeypatch):
     monkeypatch.setattr(backends.httpx, "Client", FakeClient)
 
 
+def test_reasoning_backend_max_tokens_in_payload():
+    b = ReasoningBackend("https://api.example.com/v1", api_key="sk-x")
+    b.chat([{"role": "user", "content": "hi"}], max_tokens=64)
+    assert FakeClient.last_json["max_tokens"] == 64
+
+
+def test_reasoning_backend_parses_cache_usage():
+    class CacheResponse(FakeResponse):
+        def json(self) -> dict:
+            return {
+                "choices": [{"message": {"content": "42"}, "finish_reason": "stop"}],
+                "usage": {
+                    "prompt_tokens": 500,
+                    "completion_tokens": 5,
+                    "prompt_cache_hit_tokens": 490,
+                    "prompt_cache_miss_tokens": 10,
+                },
+            }
+
+    class CacheClient(FakeClient):
+        def _response_for(self, url, json):
+            return CacheResponse({}).json()
+
+    backends.httpx.Client = CacheClient
+    b = ReasoningBackend("https://api.example.com/v1")
+    res = b.chat([{"role": "user", "content": "hi"}])
+    assert res.prompt_tokens == 500
+    assert res.cache_hit_tokens == 490
+    assert res.cache_miss_tokens == 10
+
+
+def test_ollama_vision_backend_cap():
+
+    class CapClient(FakeClient):
+        def _response_for(self, url, json):
+            return {
+                "message": {"content": "tiny"},
+                "prompt_eval_count": 11,
+                "eval_count": 4,
+            }
+
+    backends.httpx.Client = CapClient
+    b = OllamaVisionBackend("http://127.0.0.1:11434", model="minicpm-v:latest")
+    b.ask("what is this", b"imagedata", max_output_tokens=48)
+    assert CapClient.last_json["options"]["num_predict"] == 48
+
+
+def test_openai_vision_backend_cap():
+    b = OpenAICompatibleVisionBackend("https://vlm.example.com/v1", api_key="vk", model="gpt-4o")
+    b.ask("what is this", b"imagedata", max_output_tokens=48)
+    assert FakeClient.last_json["max_tokens"] == 48
+
+
 def test_reasoning_backend_plain_chat():
     b = ReasoningBackend("https://api.example.com/v1", api_key="sk-x")
     res = b.chat([{"role": "user", "content": "hi"}])

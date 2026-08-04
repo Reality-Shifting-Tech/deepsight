@@ -44,6 +44,7 @@ from harness import (  # noqa: E402
     post_chat,
     score,
     stream_rows,
+    usage_cost,
 )
 
 DESCRIBE_PROMPT = (
@@ -181,6 +182,7 @@ def summarize(per: dict) -> dict:
     acc = per["correct"] / n
     tokens = per["tokens_in"] + per["tokens_out"]
     tok_per_correct = tokens / per["correct"] if per["correct"] else float("inf")
+    cost_per_correct = per["cost_usd"] / per["correct"] if per["correct"] else float("inf")
     return {
         "n": per["n"],
         "correct": per["correct"],
@@ -189,6 +191,10 @@ def summarize(per: dict) -> dict:
         "tokens_out": per["tokens_out"],
         "tokens_total": tokens,
         "tok_per_correct": round(tok_per_correct, 1),
+        "cost_usd": round(per["cost_usd"], 6),
+        "cost_per_correct": round(cost_per_correct, 6),
+        "tokens_hit": per["tokens_hit"],
+        "tokens_miss": per["tokens_miss"],
         "avg_lat_s": round(per["lat"] / n, 2),
     }
 
@@ -197,7 +203,16 @@ def run_one_mode(
     args, mode: str, bench: str, rows: list[tuple[int, dict]]
 ) -> tuple[dict, list[dict]]:
     """Run a mode over rows; returns (summary, per-row records)."""
-    per = {"n": 0, "correct": 0, "tokens_in": 0, "tokens_out": 0, "lat": 0.0}
+    per = {
+        "n": 0,
+        "correct": 0,
+        "tokens_in": 0,
+        "tokens_out": 0,
+        "tokens_hit": 0,
+        "tokens_miss": 0,
+        "cost_usd": 0.0,
+        "lat": 0.0,
+    }
     records: list[dict] = []
     q_field = BENCHES[bench][4]
     for i, row in rows:
@@ -223,6 +238,9 @@ def run_one_mode(
         per["correct"] += int(correct)
         per["tokens_in"] += ti
         per["tokens_out"] += to
+        per["tokens_hit"] += usage.get("prompt_cache_hit_tokens", 0)
+        per["tokens_miss"] += usage.get("prompt_cache_miss_tokens", 0)
+        per["cost_usd"] += usage_cost(usage)
         per["lat"] += lat
         records.append(
             {
@@ -232,6 +250,7 @@ def run_one_mode(
                 "correct": bool(correct),
                 "tokens_in": ti,
                 "tokens_out": to,
+                "cost_usd": round(usage_cost(usage), 6),
                 "lat_s": round(lat, 2),
             }
         )
@@ -286,7 +305,10 @@ def main() -> int:
             rows_out[bench][mode] = records
             print(
                 f"    {mode}: n={s['n']} acc={s['acc']:.1%} "
-                f"tok/correct={s['tok_per_correct']} avg_lat={s['avg_lat_s']}s",
+                f"tok/correct={s['tok_per_correct']} "
+                f"$/correct={s['cost_per_correct']:.4f} "
+                f"hit={s['tokens_hit']} miss={s['tokens_miss']} "
+                f"avg_lat={s['avg_lat_s']}s",
                 flush=True,
             )
 

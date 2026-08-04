@@ -20,6 +20,7 @@ from __future__ import annotations
 import base64
 import io
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -51,7 +52,12 @@ SYSTEM_PROMPT = (
     "Answer the user's question as soon as you have enough information. Counting questions: "
     'prefer the sketch\'s object list or "answer" field; only call `count` '
     "when the sketch is ambiguous.\n\n"
-    "When you have enough information, answer the user's question directly and stop calling tools."
+    "When you have enough information, answer the user's question directly and stop calling "
+    "tools.\\n\\n"
+    "ANSWER STYLE (mandatory): ultra terse, caveman mode. One word when one word is enough. "
+    "No articles, no filler, no explanations, no markdown, no bullet lists, no reasoning preamble. "
+    "Final answer = just the value (a number, a name, or a few words). "
+    'If the sketch has an "answer" field, repeat it verbatim and nothing else.'
 )
 
 MARKER_RE = re.compile(r"\[LOOK\s+(-?\d+)\s*,\s*(-?\d+)\s*,\s*(\d+)\s*,\s*(\d+)\]", re.IGNORECASE)
@@ -67,6 +73,8 @@ class SessionResult:
     rounds: int
     tool_calls: int
     cache_hits: int
+    cache_hit_tokens: int = 0
+    cache_miss_tokens: int = 0
 
     @property
     def total_tokens(self) -> int:
@@ -102,11 +110,15 @@ def load_image(image_url: str) -> Image.Image:
     return Image.open(io.BytesIO(raw)).convert("RGB")
 
 
-def _usage_sum(prompt: int, completion: int) -> dict[str, int]:
+def _usage_sum(
+    prompt: int, completion: int, cache_hit: int = 0, cache_miss: int = 0
+) -> dict[str, int]:
     return {
         "prompt_tokens": prompt,
         "completion_tokens": completion,
         "total_tokens": prompt + completion,
+        "prompt_cache_hit_tokens": cache_hit,
+        "prompt_cache_miss_tokens": cache_miss,
     }
 
 
@@ -120,18 +132,41 @@ class Orchestrator:
         cache: PerceptionCache | None = None,
         max_look_rounds: int = 5,
         sketch_enabled: bool = True,
+        tool_round_max_tokens: int = 128,
+        final_max_tokens: int | None = None,
+        vision_tool_max_tokens: int = 64,
     ) -> None:
         self.reasoning = reasoning
-        self.perception = Perception(vision, cache, sketch_enabled=sketch_enabled)
+        self.perception = Perception(
+            vision,
+            cache,
+            sketch_enabled=sketch_enabled,
+            tool_max_output_tokens=vision_tool_max_tokens,
+        )
         self.max_look_rounds = max_look_rounds
+        self.tool_round_max_tokens = tool_round_max_tokens
+        self.final_max_tokens = final_max_tokens
 
     # -- main entry --------------------------------------------------------------
 
-    def run(self, image_url: str, user_text: str) -> SessionResult:
-        """Execute a full vision session; returns the answer + usage."""
+    def run(
+        self,
+        image_url: str,
+        user_text: str,
+        on_event: Callable[[str], None] | None = None,
+    ) -> SessionResult:
+        """Execute a full vision session; returns the answer + usage.
+
+        ``on_event`` (optional) receives a short human-readable status string
+        at each milestone ("👁️ viewing image...", "✏️ sketching...",
+        "🔍 looking...", "✅ answering...") so clients can show live
+        progress while the session runs.
+        """
         image = load_image(image_url)
+        _emit(on_event, "👁️ viewing image...")
 
         # 1. sketch
+        _emit(on_event, "✏️ sketching scene...")
         sketch = self.perception.sketch(image, question=user_text)
         sketch_block = f"\nScene sketch:\n{sketch}\n" if sketch else "\n(no sketch)\n"
 
@@ -142,15 +177,36 @@ class Orchestrator:
 
         prompt_tokens = self.perception.total_prompt_tokens
         completion_tokens = self.perception.total_completion_tokens
+        cache_hit_tokens = 0
+        cache_miss_tokens = 0
         rounds = 0
         tool_calls_total = 0
         last_content = ""
 
         while rounds < self.max_look_rounds:
             rounds += 1
-            result = self.reasoning.chat(messages, tools=_tool_defs())
+            result = self.reasoning.chat(
+                messages,
+                tools=_tool_defs(),
+                max_tokens=self.tool_round_max_tokens,
+            )
+            if (
+                not result.content.strip()
+                and not result.tool_calls
+                and result.finish_reason == "length"
+            ):
+                # the output budget truncated the model mid-thought; retry
+                # this round once with the final budget so no turn is wasted
+                _emit(on_event, "🔁 widening output budget...")
+                result = self.reasoning.chat(
+                    messages,
+                    tools=_tool_defs(),
+                    max_tokens=self.final_max_tokens,
+                )
             prompt_tokens += result.prompt_tokens
             completion_tokens += result.completion_tokens
+            cache_hit_tokens += result.cache_hit_tokens
+            cache_miss_tokens += result.cache_miss_tokens
             if result.content and result.content.strip():
                 last_content = result.content
 
@@ -159,6 +215,7 @@ class Orchestrator:
                 tool_messages: list[dict[str, Any]] = []
                 for call in result.tool_calls:
                     tool_calls_total += 1
+                    _emit(on_event, f"🔍 looking ({call.name})...")
                     observation = self.perception.execute(call.name, call.arguments, image)
                     tool_messages.append(
                         {
@@ -208,6 +265,12 @@ class Orchestrator:
                 )
                 continue
 
+            if not result.content.strip():
+                # still nothing usable (e.g. truncated again); loop again
+                # rather than answering with an empty string
+                continue
+
+            _emit(on_event, "✅ answering...")
             return SessionResult(
                 content=result.content,
                 prompt_tokens=prompt_tokens,
@@ -215,9 +278,12 @@ class Orchestrator:
                 rounds=rounds,
                 tool_calls=tool_calls_total,
                 cache_hits=self.perception.cache_hits,
+                cache_hit_tokens=cache_hit_tokens,
+                cache_miss_tokens=cache_miss_tokens,
             )
 
         # hit the round cap: force a final answer with one last no-tools call
+        _emit(on_event, "✅ answering...")
         messages.append(
             {
                 "role": "user",
@@ -228,9 +294,15 @@ class Orchestrator:
                 ),
             }
         )
-        final = self.reasoning.chat(messages, tools=None)
+        final = self.reasoning.chat(
+            messages,
+            tools=None,
+            max_tokens=self.final_max_tokens,
+        )
         prompt_tokens += final.prompt_tokens
         completion_tokens += final.completion_tokens
+        cache_hit_tokens += final.cache_hit_tokens
+        cache_miss_tokens += final.cache_miss_tokens
         final_content = (final.content or last_content or "").strip()
         if not final_content:
             final_content = "[deepsight] reached max look rounds without a final answer."
@@ -241,6 +313,8 @@ class Orchestrator:
             rounds=rounds + 1,
             tool_calls=tool_calls_total,
             cache_hits=self.perception.cache_hits,
+            cache_hit_tokens=cache_hit_tokens,
+            cache_miss_tokens=cache_miss_tokens,
         )
 
 
@@ -248,3 +322,8 @@ def _json_dumps(args: dict[str, Any]) -> str:
     import json
 
     return json.dumps(args)
+
+
+def _emit(on_event: Callable[[str], None] | None, message: str) -> None:
+    if on_event is not None:
+        on_event(message)

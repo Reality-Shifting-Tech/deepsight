@@ -32,12 +32,15 @@ class Settings(BaseSettings):
     reasoning_api_key: str = ""
     reasoning_model: str = "deepseek-v4-flash"
     reasoning_temperature: float = 0.2
+    reasoning_max_tokens: int = 1024
+    reasoning_tool_round_max_tokens: int = 256
 
     # --- vision backend (the eyes; Ollama minicpm-v by default) ---
     vision_base_url: str = "http://127.0.0.1:11434"
     vision_api_key: str = ""
     vision_model: str = "minicpm-v:latest"
     vision_temperature: float = 0.0
+    vision_tool_max_tokens: int = 64
 
     # --- vision-session loop ---
     max_look_rounds: int = 5

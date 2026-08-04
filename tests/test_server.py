@@ -24,7 +24,10 @@ def make_session(content: str = "42", prompt: int = 30, completion: int = 12) ->
 def client(monkeypatch, png_data_url):
     app = create_app()
 
-    async def fake_run(orchestrator, image_url, user_text):
+    async def fake_run(orchestrator, image_url, user_text, on_event=None):
+        if on_event:
+            on_event("👁️ viewing image...")
+            on_event("✏️ sketching scene...")
         return make_session()
 
     monkeypatch.setattr("deepsight.server._run_session", fake_run)
@@ -103,6 +106,36 @@ def test_chat_completion_stream(client, png_data_url):
     payloads = [json.loads(c[6:]) for c in chunks[:-1]]
     assert any("42" in json.dumps(p) for p in payloads)
     assert any(p.get("usage") for p in payloads)
+
+
+def test_chat_completion_stream_emits_status_chunks(client, png_data_url):
+    resp = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "deepsight",
+            "stream": True,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "What is this?"},
+                        {"type": "image_url", "image_url": {"url": png_data_url}},
+                    ],
+                }
+            ],
+        },
+    )
+    assert resp.status_code == 200
+    chunks = [line for line in resp.text.splitlines() if line.startswith("data:")]
+    payloads = [json.loads(c[6:]) for c in chunks if c.strip() != "data: [DONE]"]
+    statuses = [
+        p["choices"][0]["delta"].get("status")
+        for p in payloads
+        if p.get("choices") and p["choices"][0].get("delta")
+    ]
+    assert "👁️ viewing image..." in statuses
+    assert "✏️ sketching scene..." in statuses
+    assert statuses.index("👁️ viewing image...") < statuses.index("✏️ sketching scene...")
 
 
 def test_text_only_message_with_image_url(client, png_data_url):

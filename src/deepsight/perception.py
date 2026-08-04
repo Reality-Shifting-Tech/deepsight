@@ -162,10 +162,12 @@ class Perception:
         vision: VisionBackendType,
         cache: PerceptionCache | None = None,
         sketch_enabled: bool = True,
+        tool_max_output_tokens: int | None = None,
     ) -> None:
         self.vision = vision
         self.cache = cache or PerceptionCache()
         self.sketch_enabled = sketch_enabled
+        self.tool_max_output_tokens = tool_max_output_tokens
         self.total_prompt_tokens = 0
         self.total_completion_tokens = 0
         self.cache_hits = 0
@@ -201,15 +203,24 @@ class Perception:
     # -- calls ------------------------------------------------------------------
 
     def _ask(
-        self, prompt: str, image_bytes: bytes, kind: str, region: tuple[int, int, int, int] | None
+        self,
+        prompt: str,
+        image_bytes: bytes,
+        kind: str,
+        region: tuple[int, int, int, int] | None,
     ) -> tuple[str, bool]:
-        """Ask the vision model, honoring the cache. Returns (text, cache_hit)."""
+        """Ask the vision model, honoring the cache. Returns (text, cache_hit).
+
+        Tool observations are capped via ``tool_max_output_tokens`` so the
+        vision model answers tersely; the scene sketch is never capped.
+        """
         if self.cache is not None:
             hit = self.cache.get(self.cache.image_hash(image_bytes), region, kind)
             if hit is not None:
                 self.cache_hits += 1
                 return hit, True
-        result = self.vision.ask(prompt, image_bytes)
+        cap = self.tool_max_output_tokens if not kind.startswith("sketch") else None
+        result = self.vision.ask(prompt, image_bytes, max_output_tokens=cap)
         self.total_prompt_tokens += result.prompt_tokens
         self.total_completion_tokens += result.completion_tokens
         if self.cache is not None:

@@ -77,6 +77,25 @@ development:
   current milestone requires, reuse existing vocabulary.
 - One logical change per PR; keep diffs reviewable.
 
+## Streaming status events
+
+`POST /v1/chat/completions` with `"stream": true` emits live progress chunks
+before the final answer, so clients can show feedback instead of silence
+during the ~1 min vision session.
+
+Each progress chunk carries a `delta.status` string (standard OpenAI SSE
+shape, unknown field ignored by strict clients):
+
+- `👁️ viewing image...` - image loaded, sketch in progress
+- `✏️ sketching scene...` - vision pass building the scene sketch
+- `🔍 looking (<tool>)...` - one `look`/`ocr`/`zoom`/... tool round
+- `✅ answering...` - reasoning composing the final answer
+
+The final `delta.content` chunk carries the answer. Non-stream responses
+return the same milestones via the `Orchestrator.run(..., on_event=cb)`
+callback. Hermes integration: display `delta.status` chunks as transient
+status lines and treat `delta.content` as the real answer.
+
 ## Working agreement for agents
 
 - Never commit or push unless explicitly asked.

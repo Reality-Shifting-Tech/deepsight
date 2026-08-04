@@ -39,12 +39,19 @@ class FakeReasoning:
         self.calls = 0
         self.last_messages: list[dict] | None = None
         self.last_tools: list[dict] | None = None
+        self.last_max_tokens: int | None = None
 
-    def chat(self, messages: list[dict], tools: list[dict] | None = None) -> ReasoningResult:
+    def chat(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        max_tokens: int | None = None,
+    ) -> ReasoningResult:
         if self.calls >= len(self.script):
             raise AssertionError("fake reasoning script exhausted")
         self.last_messages = messages
         self.last_tools = tools
+        self.last_max_tokens = max_tokens
         result = self.script[self.calls]
         self.calls += 1
         return result
@@ -68,11 +75,15 @@ class FakeVision:
         self.calls = 0
         self.last_prompt: str | None = None
         self.last_bytes: bytes | None = None
+        self.last_max_output_tokens: int | None = None
 
-    def ask(self, prompt: str, image_bytes: bytes) -> VisionResult:
+    def ask(
+        self, prompt: str, image_bytes: bytes, max_output_tokens: int | None = None
+    ) -> VisionResult:
         self.calls += 1
         self.last_prompt = prompt
         self.last_bytes = image_bytes
+        self.last_max_output_tokens = max_output_tokens
         return VisionResult(self.text, self.prompt, self.completion)
 
 
