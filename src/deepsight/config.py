@@ -35,7 +35,10 @@ class Settings(BaseSettings):
     reasoning_max_tokens: int = 1024
     reasoning_tool_round_max_tokens: int = 256
 
-    # --- vision backend (the eyes; Ollama minicpm-v by default) ---
+    # --- vision backend (the eyes; default Ollama minicpm-v, or "native"
+    # for the Apple Vision framework binary: zero tokens, zero downloads) ---
+    vision_backend: str = "ollama"
+    vision_bin: str = "vision_eyes"
     vision_base_url: str = "http://127.0.0.1:11434"
     vision_api_key: str = ""
     vision_model: str = "minicpm-v:latest"

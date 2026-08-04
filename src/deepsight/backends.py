@@ -285,16 +285,79 @@ class OpenAICompatibleVisionBackend:
         )
 
 
-VisionBackend = Literal["ollama", "openai"]
+class NativeVisionBackend:
+    """Apple Vision framework eyes via the compiled ``vision_eyes`` binary.
+
+    Zero model downloads, zero tokens, zero GPU: OCR + saliency only, via
+    macOS Vision.framework. Best for text-bearing images (charts, docs,
+    UI, screenshots). The prompt is advisory; the eyes always emit OCR.
+    """
+
+    def __init__(self, bin_path: str, timeout: float = 60.0) -> None:
+        self.bin_path = bin_path
+        self.timeout = timeout
+
+    @staticmethod
+    def _parse_stdout(raw: str) -> str:
+        ocr: list[str] = []
+        saliency: list[str] = []
+        for line in raw.splitlines():
+            if line.startswith("  "):
+                ocr.append(line.strip())
+            elif "salient objects" in line:
+                saliency.append(line.strip())
+        parts: list[str] = []
+        if ocr:
+            parts.append("OCR text:\n" + "\n".join(ocr))
+        if saliency:
+            parts.append("\n".join(saliency))
+        return "\n".join(parts).strip() or "(no text detected)"
+
+    def ask(
+        self,
+        prompt: str,
+        image_bytes: bytes,
+        max_output_tokens: int | None = None,
+    ) -> VisionResult:
+        import os
+        import subprocess
+        import tempfile
+
+        fd, tmp = tempfile.mkstemp(suffix=".png")
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(image_bytes)
+            proc = subprocess.run(
+                [self.bin_path, tmp],
+                capture_output=True,
+                text=True,
+                timeout=self.timeout,
+            )
+            if proc.returncode != 0:
+                return VisionResult(
+                    f"vision_eyes error: {proc.stderr.strip()[:200]}", 0, 0
+                )
+            text = self._parse_stdout(proc.stdout)
+        finally:
+            os.unlink(tmp)
+        return VisionResult(text=text, prompt_tokens=0, completion_tokens=0)
 
 
-def build_vision_backend(settings: Any) -> OllamaVisionBackend | OpenAICompatibleVisionBackend:
+VisionBackend = Literal["ollama", "openai", "native"]
+
+
+def build_vision_backend(
+    settings: Any,
+) -> OllamaVisionBackend | OpenAICompatibleVisionBackend | NativeVisionBackend:
     """Construct the configured vision backend.
 
-    The backend kind is chosen by ``DEEPSIGHT_VISION_BASE_URL``: an
-    ``http://...:11434`` address is treated as Ollama; anything else is
-    treated as an OpenAI-compatible endpoint.
+    The backend kind is chosen by ``DEEPSIGHT_VISION_BACKEND``: ``native``
+    uses the Apple Vision framework binary (zero tokens, zero downloads);
+    otherwise an ``http://...:11434`` address is treated as Ollama and
+    anything else as an OpenAI-compatible endpoint.
     """
+    if getattr(settings, "vision_backend", "ollama") == "native":
+        return NativeVisionBackend(bin_path=settings.vision_bin)
     base = settings.vision_base_url
     if "11434" in base or "ollama" in base:
         return OllamaVisionBackend(
