@@ -359,3 +359,39 @@ def test_native_boxes_error(monkeypatch, tmp_path):
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: FakeProc())
     b = NativeVisionBackend(bin_path="/fake/vision_eyes")
     assert b.boxes(b"pngdata") == []
+
+
+def test_windows_vision_ask_no_tesseract():
+    """WindowsVisionBackend.ask() works without pytesseract (PIL only)."""
+    from deepsight.backends import WindowsVisionBackend
+
+    b = WindowsVisionBackend()
+    assert b._tesseract is None
+    import io
+
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (32, 32), (100, 150, 200)).save(buf, format="PNG")
+    result = b.ask("what is this", buf.getvalue())
+    assert "image: 32x32" in result.text
+    assert result.prompt_tokens == 0
+    assert result.completion_tokens == 0
+
+
+def test_windows_vision_boxes_without_tesseract():
+    from deepsight.backends import WindowsVisionBackend
+    b = WindowsVisionBackend()
+    assert b.boxes(b"pngdata") == []
+
+
+def test_windows_vision_ask_with_dark_image():
+    import io
+
+    from PIL import Image
+
+    from deepsight.backends import WindowsVisionBackend
+    b = WindowsVisionBackend()
+    buf = io.BytesIO()
+    Image.new("RGB", (16, 16), (10, 10, 10)).save(buf, format="PNG")
+    result = b.ask("", buf.getvalue())
+    assert "dark" in result.text

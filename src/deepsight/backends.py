@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from dataclasses import dataclass
 from typing import Any
 
@@ -433,6 +434,152 @@ class NativeVisionBackend:
         return VisionResult(text=text, prompt_tokens=0, completion_tokens=0)
 
 
+class WindowsVisionBackend:
+    """Windows-native vision via PIL + optional Tesseract OCR.
+
+    This is the Windows counterpart to ``NativeVisionBackend`` (macOS
+    Apple Vision). It uses PIL for basic scene analysis (dominant
+    colors, brightness, entropy, dimensions) and optionally pytesseract
+    for OCR when installed. No GPU, no network, zero tokens for
+    PIL-based analysis.
+
+    Install Tesseract OCR for full text capabilities::
+
+        winget install UB-Mannheim.TesseractOCR
+        pip install pytesseract
+
+    Without it, ``ask()`` returns PIL-based analysis and ``boxes()``
+    returns an empty list (the locate tool will report "no detections").
+    """
+
+    def __init__(self, timeout: float = 60.0) -> None:
+        self.timeout = timeout
+        self._tesseract = None
+        try:
+            import pytesseract as _pt  # type: ignore[import-not-found]
+
+            self._tesseract = _pt
+        except ImportError:
+            pass
+
+    def ask(
+        self,
+        prompt: str,  # noqa: ARG002
+        image_bytes: bytes,
+        max_output_tokens: int | None = None,  # noqa: ARG002
+    ) -> VisionResult:
+        """Analyze image using PIL + optional Tesseract OCR."""
+        import io
+
+        from PIL import Image, ImageStat
+
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        w, h = img.size
+        parts: list[str] = [f"image: {w}x{h}"]
+
+        # Dominant colors (quantized 5-bit)
+        reduced = img.quantize(colors=8).convert("RGB")
+        colors = reduced.getcolors(maxcolors=8)
+        if colors:
+            colors.sort(key=lambda x: -x[0])
+            total = sum(c[0] for c in colors)
+            hexes = []
+            for count, rgb in colors[:5]:
+                r, g, b = int(rgb[0]), int(rgb[1]), int(rgb[2])  # type: ignore[index]
+                pct = count / total * 100
+                hexes.append(f"#{r:02X}{g:02X}{b:02X}({pct:.0f}%)")
+            parts.append("colors: " + ", ".join(hexes))
+
+        # Brightness
+        stat = ImageStat.Stat(img)
+        # Convert to list for brightness calculation
+        mean_vals = list(stat.mean)
+        avg_brightness = sum(mean_vals[:3]) / 3 if len(mean_vals) >= 3 else 128.0
+        if avg_brightness < 50:
+            parts.append("scene: dark")
+        elif avg_brightness > 200:
+            parts.append("scene: bright")
+        else:
+            parts.append("scene: normal lighting")
+
+        # Entropy (texture complexity)
+        try:
+            import math
+
+            gray = img.convert("L")
+            hist = gray.histogram()
+            total_px = w * h
+            entropy = -sum(
+                (c / total_px) * math.log2(c / total_px)
+                for c in hist
+                if c > 0
+            )
+            if entropy > 6:
+                parts.append("texture: high detail")
+            elif entropy > 3:
+                parts.append("texture: moderate detail")
+            else:
+                parts.append("texture: low detail / flat")
+        except Exception:
+            pass
+
+        # OCR via pytesseract
+        if self._tesseract is not None:
+            try:
+                text = self._tesseract.image_to_string(img).strip()
+                if text:
+                    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+                    if lines:
+                        parts.append("OCR text:")
+                        for ln in lines[:15]:
+                            parts.append(f"  {ln[:120]}")
+            except Exception:
+                parts.append("OCR: error")
+
+        text = "\n".join(parts)
+        return VisionResult(text=text, prompt_tokens=0, completion_tokens=0)
+
+    def boxes(self, image_bytes: bytes) -> list[dict[str, Any]]:
+        """Return bounding boxes from OCR (pytesseract) or empty list."""
+        if self._tesseract is None:
+            return []
+        import io
+
+        from PIL import Image
+
+        try:
+            img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+            data = self._tesseract.image_to_data(img, output_type=self._tesseract.Output.DICT)
+            boxes: list[dict[str, Any]] = []
+            for i in range(len(data.get("text", []))):
+                text = (data.get("text") or [""])[i].strip()
+                conf_str = str((data.get("conf") or [])[i])
+                conf = 1.0
+                try:
+                    conf = float(conf_str) / 100.0
+                except (ValueError, TypeError):
+                    conf = 0.5
+                if not text or conf < 0.3:
+                    continue
+                w_img, h_img = img.size
+                x = (data.get("left") or [0])[i] / w_img
+                y = (data.get("top") or [0])[i] / h_img
+                bw = (data.get("width") or [0])[i] / w_img
+                bh = (data.get("height") or [0])[i] / h_img
+                boxes.append({
+                    "type": "text",
+                    "confidence": conf,
+                    "x": x,
+                    "y": y,
+                    "w": bw,
+                    "h": bh,
+                    "label": text,
+                })
+            return boxes
+        except Exception:
+            return []
+
+
 def _screen_size() -> tuple[int, int]:
     """Return (width, height) of the main display via tkinter (stdlib)."""
     try:
@@ -463,6 +610,17 @@ class ComputerUseBackend:
         )
         self._screen_size = _screen_size()
 
+    def _is_windows(self) -> bool:
+        return sys.platform == "win32"
+
+    def _powershell(self, cmd: str, timeout: float = 15) -> tuple[int, str]:
+        """Run a PowerShell command, return (exit_code, stdout)."""
+        r = subprocess.run(
+            ["powershell", "-Command", cmd],
+            capture_output=True, text=True, timeout=timeout,
+        )
+        return (r.returncode, r.stdout.strip())
+
     def _pixels(self, x_pct: float, y_pct: float) -> tuple[int, int]:
         w, h = self._screen_size
         return (int(x_pct / 100 * w), int(y_pct / 100 * h))
@@ -491,7 +649,12 @@ class ComputerUseBackend:
         x_pct = float(args.get("x", 50))
         y_pct = float(args.get("y", 50))
         px, py = self._pixels(x_pct, y_pct)
-        if self._has_cliclick:
+        if self._is_windows():
+            import ctypes
+            ctypes.windll.user32.SetCursorPos(px, py)  # type: ignore[attr-defined]
+            ctypes.windll.user32.mouse_event(2, 0, 0, 0, 0)  # type: ignore[attr-defined]
+            ctypes.windll.user32.mouse_event(4, 0, 0, 0, 0)  # type: ignore[attr-defined]
+        elif self._has_cliclick:
             subprocess.run(
                 ["cliclick", f"c:{px},{py}"],
                 capture_output=True, timeout=10,
@@ -509,7 +672,14 @@ class ComputerUseBackend:
         if not text:
             return "type: no text provided"
         display = text[:60] + ("..." if len(text) > 60 else "")
-        if self._has_cliclick:
+        if self._is_windows():
+            safe = text.replace('"', '\\"').replace("'", "''")
+            self._powershell(
+                f'Add-Type -AssemblyName System.Windows.Forms; '
+                f'[System.Windows.Forms.SendKeys]::SendWait("{safe}")',
+                timeout=30,
+            )
+        elif self._has_cliclick:
             subprocess.run(
                 ["cliclick", f"t:{text}"],
                 capture_output=True, timeout=30,
@@ -537,6 +707,33 @@ class ComputerUseBackend:
         parts = keys.lower().split("+")
         key = parts[-1]
         modifiers = parts[:-1]
+
+        # Windows SendKeys
+        WIN_KEY = {
+            "return": "{ENTER}", "enter": "{ENTER}", "tab": "{TAB}",
+            "escape": "{ESC}", "esc": "{ESC}", "space": " ",
+            "delete": "{DEL}", "backspace": "{BACKSPACE}",
+            "up": "{UP}", "down": "{DOWN}", "left": "{LEFT}", "right": "{RIGHT}",
+            "home": "{HOME}", "end": "{END}",
+            "pageup": "{PGUP}", "pagedown": "{PGDN}",
+        }
+        if self._is_windows():
+            ctrl = "^" if "ctrl" in modifiers else ""
+            alt = "%" if "alt" in modifiers or "option" in modifiers else ""
+            shift_ = "+" if "shift" in modifiers else ""
+            if len(parts) == 1 and key in WIN_KEY:
+                sk = WIN_KEY[key]
+            elif len(parts) == 1 and len(key) == 1:
+                sk = key
+            elif key in WIN_KEY:
+                sk = ctrl + alt + shift_ + WIN_KEY[key]
+            else:
+                sk = ctrl + alt + shift_ + (key.upper() if shift_ else key)
+            self._powershell(
+                f'Add-Type -AssemblyName System.Windows.Forms; '
+                f'[System.Windows.Forms.SendKeys]::SendWait("{sk}")',
+            )
+            return f"pressed {keys}"
 
         # osascript modifier map
         osa_mods = {
@@ -580,7 +777,11 @@ class ComputerUseBackend:
     def _scroll(self, args: dict[str, Any]) -> str:
         direction = str(args.get("direction", "down"))
         clicks = int(args.get("clicks", 3))
-        if self._has_cliclick:
+        if self._is_windows():
+            import ctypes
+            delta = -120 * clicks if direction == "down" else 120 * clicks
+            ctypes.windll.user32.mouse_event(0x0800, 0, 0, delta, 0)  # type: ignore[attr-defined]
+        elif self._has_cliclick:
             subprocess.run(
                 ["cliclick", f"w:{clicks}"],
                 capture_output=True, timeout=10,
@@ -708,6 +909,40 @@ class ComputerUseBackend:
             + '  return "window: " & bx & "," & by & " " & bw & "x" & bh\n'
             + "end tell"
         )
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                name = str(args.get("name", "")).strip() or None
+                hwnd = None
+                if name:
+                    hwnd = ctypes.windll.user32.FindWindowW(None, name)  # type: ignore[attr-defined]
+                else:
+                    ctypes.windll.user32.SetForegroundWindow(hwnd)  # type: ignore[attr-defined]
+                if not hwnd:
+                    return "window: no matching window found"
+                has_x, has_y = "x" in args, "y" in args
+                has_w, has_h = "w" in args or "width" in args, "h" in args or "height" in args
+                if not (has_x or has_y or has_w or has_h):
+                    return "window: specify at least one of x, y, w, h"
+                rect = ctypes.wintypes.RECT()
+                ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(rect))  # type: ignore[attr-defined]
+                x = rect.left
+                y = rect.top
+                w = rect.right - rect.left
+                h = rect.bottom - rect.top
+                sw, sh = self._screen_size
+                if has_x:
+                    x = int(float(args["x"]) / 100 * sw)
+                if has_y:
+                    y = int(float(args["y"]) / 100 * sh)
+                if has_w:
+                    w = int(float(args.get("w", args.get("width", w))) / 100 * sw)
+                if has_h:
+                    h = int(float(args.get("h", args.get("height", h))) / 100 * sh)
+                ctypes.windll.user32.MoveWindow(hwnd, x, y, w, h, True)  # type: ignore[attr-defined]
+                return f"window: {x},{y} {w}x{h}"
+            except Exception as exc:
+                return f"window: failed — {exc}"
         rc, out = self._run_osa(script)
         if rc != 0:
             return f"window: failed to resize — {out[:100]}"

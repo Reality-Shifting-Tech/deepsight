@@ -20,10 +20,10 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from .backends import NativeVisionBackend, SearchBackend
+from .backends import NativeVisionBackend, SearchBackend, WindowsVisionBackend
 from .cache import PerceptionCache
 
-VisionBackendType = NativeVisionBackend
+VisionBackendType = NativeVisionBackend | WindowsVisionBackend
 
 SKETCH_PROMPT = (
     "You are the perception module of DeepSight. Analyze the image and "
@@ -544,15 +544,19 @@ class Perception:
         import sys
         import tempfile
 
-        if sys.platform != "darwin":
-            return "capture: only supported on macOS (screencapture not available)"
+        if sys.platform not in ("darwin", "win32"):  # noqa: E701
+            return "capture: only supported on macOS and Windows"
 
         region = str(args.get("region", "screen"))
 
         fd, tmp_path = tempfile.mkstemp(suffix=".png")
         os.close(fd)
         try:
-            if region and region != "screen":
+            if sys.platform == "win32":
+                from PIL import ImageGrab
+                img_capture = ImageGrab.grab()
+                img_capture.save(tmp_path, format="PNG")
+            elif region and region != "screen":
                 result = subprocess.run(
                     [
                         "osascript", "-e",
@@ -660,15 +664,20 @@ class Perception:
             # storing the image (we analyze inline).
             import os as _os
             import subprocess as _sp
+            import sys as _sys
             import tempfile as _tf
 
             fd, tmp = _tf.mkstemp(suffix=".png")
             _os.close(fd)
             try:
-                _sp.run(
-                    ["screencapture", "-x", tmp],
-                    capture_output=True, timeout=10,
-                )
+                if _sys.platform == "win32":
+                    from PIL import ImageGrab as _IG
+                    _IG.grab().save(tmp, format="PNG")
+                else:
+                    _sp.run(
+                        ["screencapture", "-x", tmp],
+                        capture_output=True, timeout=10,
+                    )
                 if not _os.path.getsize(tmp):
                     continue
 
