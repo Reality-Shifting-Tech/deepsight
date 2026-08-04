@@ -187,6 +187,7 @@ class NativeVisionBackend:
         face_quality: list[str] = []
         animals: list[str] = []
         colors: list[str] = []
+        sports: list[str] = []
         for line in raw.splitlines():
             stripped = line.strip()
             if line.startswith("  "):
@@ -205,6 +206,8 @@ class NativeVisionBackend:
                 pose.append(stripped.removeprefix("pose ").strip())
             elif stripped.startswith("animals:"):
                 animals.append(stripped.removeprefix("animals:").strip())
+            elif stripped.startswith("sports:"):
+                sports.append(stripped.removeprefix("sports:").strip())
             elif stripped.startswith("colors:"):
                 colors.append(stripped.removeprefix("colors:").strip())
             elif stripped.startswith(("faces:", "humans:", "rectangles:")):
@@ -214,6 +217,8 @@ class NativeVisionBackend:
             parts.append("OCR text:\n" + "\n".join(ocr))
         if scene:
             parts.append("Scene: " + scene[0])
+        if sports:
+            parts.append("Sports: " + "; ".join(sports))
         if saliency:
             parts.append("\n".join(saliency))
         if counts:

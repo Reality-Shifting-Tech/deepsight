@@ -40,7 +40,12 @@ SYSTEM_PROMPT = (
     'the information you need. If the sketch has an "answer" field, respond with that value '
     "immediately and stop: do not re-derive it, do not call tools. "
     "The sketch may include OCR text (jersey/logo/UI text), scene labels, body-pose counts, "
-    "face attributes, a color palette, and object counts. "
+    "face attributes, a color palette, object counts, and a sports line naming detected "
+    "sports/equipment concepts (e.g. `sports: baseball(0.7)`). "
+    "If the sports line lists two or more DISTINCT sports, the photo shows a group of athletes "
+    "from different sports, typically the same city's teams posing together, NOT fans of one "
+    "team. Treat it as an athletes' group photo, state the multi-sport nature explicitly, and "
+    "use OCR team names plus any city hints to name the teams. "
     "Use the tools only when the sketch is missing or ambiguous: "
     "read text with `ocr`, zoom into small areas with `zoom`, inspect regions with `look`, and "
     "count objects with `count` (one call counts them all; do not count one by one). "

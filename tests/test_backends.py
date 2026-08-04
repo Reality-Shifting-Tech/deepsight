@@ -210,6 +210,7 @@ def test_native_parse_stdout_vlm_signals():
         "pose 0: joints=18 arms_up=false\n"
         "animals: none\n"
         "colors: #C0B0A0(9%), #000000(4%)\n"
+        "sports: baseball(0.71), basketball(0.55)\n"
     )
     out = NativeVisionBackend._parse_stdout(raw)
     assert "OCR text:" in out
@@ -220,6 +221,12 @@ def test_native_parse_stdout_vlm_signals():
     assert "Face quality: 0.39" in out
     assert "Animals: none" in out
     assert "Colors: #C0B0A0(9%), #000000(4%)" in out
+    assert "Sports: baseball(0.71), basketball(0.55)" in out
+
+
+def test_native_parse_stdout_sports_none():
+    out = NativeVisionBackend._parse_stdout("scene: people(0.8)\nsports: none\n")
+    assert "Sports: none" in out
 
 
 def test_native_parse_stdout_empty():

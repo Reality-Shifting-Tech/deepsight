@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Eyes v3 sports-equipment signal.** `vision_eyes` now classifies the full frame plus salient-region crops (2x upscaled, subdivided into a 2x2 grid) through a sport taxonomy (baseball, basketball, american football, soccer, ice hockey, tennis, golf, volleyball) and emits a `sports:` line. The sketch surfaces it as `Sports: baseball(0.57), ice hockey(0.54), ...` right after the scene label. The orchestrator prompt instructs the model that two or more distinct sports means an athletes' group photo (typically one city's teams), not a single-team crowd, and to trust it over OCR team names. On the 1980 City of Champions benchmark the blind pass now reads the group as athletes from different sports instead of "Sixers fans in Louisville", and the session is cheaper (2 rounds vs 3).
+
 ### Fixed
 
 - **Reasoning-model tool rounds no longer truncate.** `tool_round_max_tokens`
