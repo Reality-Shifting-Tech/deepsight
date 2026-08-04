@@ -198,6 +198,30 @@ def test_native_parse_stdout_sections():
     assert "rectangles: 2" in out
 
 
+def test_native_parse_stdout_vlm_signals():
+    raw = (
+        "  THUNDER\n"
+        "scene: recreation(0.97), sport(0.97), basketball(0.97)\n"
+        "faces: 1\n"
+        "face attr: 0: roll=0° yaw=45° pitch=?\n"
+        "face quality: 0.39\n"
+        "humans: 4\n"
+        "pose: 5 human(s)\n"
+        "pose 0: joints=18 arms_up=false\n"
+        "animals: none\n"
+        "colors: #C0B0A0(9%), #000000(4%)\n"
+    )
+    out = NativeVisionBackend._parse_stdout(raw)
+    assert "OCR text:" in out
+    assert "THUNDER" in out
+    assert "Scene: recreation(0.97), sport(0.97), basketball(0.97)" in out
+    assert "Pose: 5 human(s); 0: joints=18 arms_up=false" in out
+    assert "Face attrs: 0: roll=0° yaw=45° pitch=?" in out
+    assert "Face quality: 0.39" in out
+    assert "Animals: none" in out
+    assert "Colors: #C0B0A0(9%), #000000(4%)" in out
+
+
 def test_native_parse_stdout_empty():
     out = NativeVisionBackend._parse_stdout("")
     assert out == "(no text or scene detected)"

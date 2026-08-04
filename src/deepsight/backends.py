@@ -182,6 +182,11 @@ class NativeVisionBackend:
         scene: list[str] = []
         saliency: list[str] = []
         counts: list[str] = []
+        pose: list[str] = []
+        face_attrs: list[str] = []
+        face_quality: list[str] = []
+        animals: list[str] = []
+        colors: list[str] = []
         for line in raw.splitlines():
             stripped = line.strip()
             if line.startswith("  "):
@@ -190,6 +195,18 @@ class NativeVisionBackend:
                 scene.append(stripped.removeprefix("scene:").strip())
             elif "salient objects" in stripped:
                 saliency.append(stripped)
+            elif stripped.startswith("face attr:"):
+                face_attrs.append(stripped.removeprefix("face attr:").strip())
+            elif stripped.startswith("face quality:"):
+                face_quality.append(stripped.removeprefix("face quality:").strip())
+            elif stripped.startswith("pose:"):
+                pose.append(stripped.removeprefix("pose:").strip())
+            elif stripped.startswith("pose "):
+                pose.append(stripped.removeprefix("pose ").strip())
+            elif stripped.startswith("animals:"):
+                animals.append(stripped.removeprefix("animals:").strip())
+            elif stripped.startswith("colors:"):
+                colors.append(stripped.removeprefix("colors:").strip())
             elif stripped.startswith(("faces:", "humans:", "rectangles:")):
                 counts.append(stripped)
         parts: list[str] = []
@@ -201,6 +218,16 @@ class NativeVisionBackend:
             parts.append("\n".join(saliency))
         if counts:
             parts.append("\n".join(counts))
+        if pose:
+            parts.append("Pose: " + "; ".join(pose))
+        if face_attrs:
+            parts.append("Face attrs: " + "; ".join(face_attrs))
+        if face_quality:
+            parts.append("Face quality: " + "; ".join(face_quality))
+        if animals:
+            parts.append("Animals: " + "; ".join(animals))
+        if colors:
+            parts.append("Colors: " + "; ".join(colors))
         return "\n".join(parts).strip() or "(no text or scene detected)"
 
     def ask(
