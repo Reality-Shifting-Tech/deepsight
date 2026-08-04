@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 720" font-family="'SF Mono','Menlo','Monaco','Consolas',monospace" font-size="13">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1a1a2e"/>
+      <stop offset="100%" stop-color="#16213e"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#e2b714"/>
+      <stop offset="100%" stop-color="#f0c040"/>
+    </linearGradient>
+  </defs>
+  <rect width="900" height="720" fill="url(#bg)" rx="12"/>
+
+  <!-- Title -->
+  <text x="450" y="35" text-anchor="middle" fill="#e2b714" font-size="18" font-weight="bold">DeepSight Architecture</text>
+  <text x="450" y="55" text-anchor="middle" fill="#8892b0" font-size="11">16 tools · zero-token vision · macOS desktop automation</text>
+
+  <!-- Layer 0: User/Agent -->
+  <rect x="350" y="72" width="200" height="44" rx="8" fill="#0ea5e9" opacity="0.9"/>
+  <text x="450" y="100" text-anchor="middle" fill="#fff" font-size="14" font-weight="bold">User / Agent</text>
+
+  <!-- Arrow down -->
+  <line x1="450" y1="116" x2="450" y2="140" stroke="#e2b714" stroke-width="2"/>
+  <polygon points="450,145 444,135 456,135" fill="#e2b714"/>
+
+  <!-- Layer 1: Orchestrator -->
+  <rect x="300" y="145" width="300" height="44" rx="8" fill="#7c3aed"/>
+  <text x="450" y="173" text-anchor="middle" fill="#fff" font-size="14" font-weight="bold">Orchestrator</text>
+
+  <!-- Arrow right to reasoning -->
+  <line x1="600" y1="167" x2="670" y2="167" stroke="#e2b714" stroke-width="2"/>
+  <polygon points="675,167 665,161 665,173" fill="#e2b714"/>
+
+  <!-- Reasoning model box -->
+  <rect x="675" y="145" width="200" height="44" rx="8" fill="#f59e0b"/>
+  <text x="775" y="165" text-anchor="middle" fill="#1a1a2e" font-size="11" font-weight="bold">Reasoning Backend</text>
+  <text x="775" y="180" text-anchor="middle" fill="#1a1a2e" font-size="10">DeepSeek / OpenAI / any</text>
+
+  <!-- Arrow down from orchestrator -->
+  <line x1="450" y1="189" x2="450" y2="210" stroke="#e2b714" stroke-width="2"/>
+  <polygon points="450,215 444,205 456,205" fill="#e2b714"/>
+
+  <!-- Tool categories -->
+  <text x="450" y="235" text-anchor="middle" fill="#8892b0" font-size="11">16 tools available to the reasoning model</text>
+
+  <!-- Vision tools box -->
+  <rect x="30" y="250" width="270" height="200" rx="8" fill="#1e293b" stroke="#0ea5e9" stroke-width="1.5"/>
+  <rect x="30" y="250" width="270" height="28" rx="8" fill="#0ea5e9"/>
+  <text x="165" y="269" text-anchor="middle" fill="#fff" font-size="12" font-weight="bold">👁️ Vision Tools</text>
+  <text x="45" y="300" fill="#e2e8f0" font-size="12">look(x, y, w, h)</text>
+  <text x="45" y="320" fill="#e2e8f0" font-size="12">ocr(x, y, w, h)</text>
+  <text x="45" y="340" fill="#e2e8f0" font-size="12">zoom(x, y, w, h)</text>
+  <text x="45" y="360" fill="#e2e8f0" font-size="12">count(what, region)</text>
+  <text x="45" y="380" fill="#e2e8f0" font-size="12">locate(what) → bbox</text>
+  <text x="45" y="405" fill="#94a3b8" font-size="10" font-style="italic">Zero tokens · Apple Vision</text>
+  <text x="45" y="420" fill="#94a3b8" font-size="10" font-style="italic">No GPU · No network</text>
+
+  <!-- Live tools box -->
+  <rect x="315" y="250" width="270" height="200" rx="8" fill="#1e293b" stroke="#10b981" stroke-width="1.5"/>
+  <rect x="315" y="250" width="270" height="28" rx="8" fill="#10b981"/>
+  <text x="450" y="269" text-anchor="middle" fill="#fff" font-size="12" font-weight="bold">📸 Live &amp; Grounding</text>
+  <text x="330" y="300" fill="#e2e8f0" font-size="12">capture(screen / window)</text>
+  <text x="330" y="320" fill="#e2e8f0" font-size="12">watch(seconds, until)</text>
+  <text x="330" y="340" fill="#e2e8f0" font-size="12">ground(what, query)</text>
+  <text x="330" y="370" fill="#94a3b8" font-size="10" font-style="italic">screencapture (macOS)</text>
+  <text x="330" y="388" fill="#94a3b8" font-size="10" font-style="italic">Brave Search API (opt-in)</text>
+  <text x="330" y="406" fill="#94a3b8" font-size="10" font-style="italic">dhash diff tracking</text>
+
+  <!-- Action tools box -->
+  <rect x="600" y="250" width="270" height="200" rx="8" fill="#1e293b" stroke="#e2b714" stroke-width="1.5"/>
+  <rect x="600" y="250" width="270" height="28" rx="8" fill="#e2b714"/>
+  <text x="735" y="269" text-anchor="middle" fill="#1a1a2e" font-size="12" font-weight="bold">🖱️ Action Tools</text>
+  <text x="615" y="300" fill="#e2e8f0" font-size="12">click(x%, y%)</text>
+  <text x="615" y="320" fill="#e2e8f0" font-size="12">type(text)</text>
+  <text x="615" y="340" fill="#e2e8f0" font-size="12">key(cmd+s / return / esc)</text>
+  <text x="615" y="360" fill="#e2e8f0" font-size="12">scroll(direction)</text>
+  <text x="615" y="380" fill="#e2e8f0" font-size="12">open(app_name)</text>
+  <text x="615" y="400" fill="#e2e8f0" font-size="12">focus(window_title)</text>
+  <text x="615" y="420" fill="#e2e8f0" font-size="12">apps() / window(x,y,w,h)</text>
+
+  <!-- Backend layer -->
+  <line x1="165" y1="450" x2="165" y2="480" stroke="#0ea5e9" stroke-width="1.5"/>
+  <line x1="450" y1="450" x2="450" y2="480" stroke="#10b981" stroke-width="1.5"/>
+  <line x1="735" y1="450" x2="735" y2="480" stroke="#e2b714" stroke-width="1.5"/>
+
+  <!-- Vision backend -->
+  <rect x="55" y="485" width="220" height="70" rx="8" fill="#0c1929" stroke="#0ea5e9" stroke-width="1"/>
+  <text x="165" y="507" text-anchor="middle" fill="#0ea5e9" font-size="12" font-weight="bold">vision_eyes (Swift)</text>
+  <text x="165" y="524" text-anchor="middle" fill="#94a3b8" font-size="10">Apple Vision framework</text>
+  <text x="165" y="540" text-anchor="middle" fill="#94a3b8" font-size="10">OCR · scene · faces · pose</text>
+
+  <!-- Live backend -->
+  <rect x="340" y="485" width="220" height="70" rx="8" fill="#0c1929" stroke="#10b981" stroke-width="1"/>
+  <text x="450" y="507" text-anchor="middle" fill="#10b981" font-size="12" font-weight="bold">screencapture (macOS)</text>
+  <text x="450" y="524" text-anchor="middle" fill="#94a3b8" font-size="10">osascript · Brave API</text>
+  <text x="450" y="540" text-anchor="middle" fill="#94a3b8" font-size="10">perceptual hashing</text>
+
+  <!-- Action backend -->
+  <rect x="625" y="485" width="220" height="70" rx="8" fill="#0c1929" stroke="#e2b714" stroke-width="1"/>
+  <text x="735" y="507" text-anchor="middle" fill="#e2b714" font-size="12" font-weight="bold">osascript / cliclick</text>
+  <text x="735" y="524" text-anchor="middle" fill="#94a3b8" font-size="10">CGEvent · Accessibility API</text>
+  <text x="735" y="540" text-anchor="middle" fill="#94a3b8" font-size="10">tkinter screen size</text>
+
+  <!-- Cross-cutting features -->
+  <rect x="30" y="580" width="840" height="52" rx="8" fill="#1e293b" stroke="#e2b714" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="450" y="602" text-anchor="middle" fill="#e2b714" font-size="12" font-weight="bold">Cross-Cutting Features</text>
+  <text x="450" y="620" text-anchor="middle" fill="#94a3b8" font-size="11">response_format (JSON schema)  ·  PerceptionCache (content-addressed)  ·  Cross-capture memory (dhash + OCR diff)  ·  action tool gating</text>
+
+  <!-- Example workflow -->
+  <rect x="30" y="645" width="840" height="60" rx="8" fill="#0c1929" stroke="#5eead4" stroke-width="0.5"/>
+  <text x="45" y="665" fill="#5eead4" font-size="11" font-weight="bold">Example live workflow:</text>
+  <text x="45" y="683" fill="#94a3b8" font-size="10">capture → locate('build button') → click(x%, y%) → watch(until='Build succeeded') → focus('Terminal') → type('fix...') → key(cmd+s) → capture</text>
+
+  <!-- Platform note -->
+  <text x="450" y="710" text-anchor="middle" fill="#5a6380" font-size="9">macOS 14+ · Python 3.11+ · DeepSight 0.1.0 · MIT License</text>
+</svg>

@@ -7,7 +7,7 @@
 
 > **Turn any text-only LLM into a multimodal desktop agent.** DeepSight gives a reasoning model (DeepSeek, OpenAI, or any OpenAI-compatible backend) interactive vision and desktop control — all on-device, zero tokens for vision, no GPU required.
 
-![DeepSight hero](docs/images/hero.png)
+![DeepSight architecture](docs/images/architecture.svg)
 
 ---
 
@@ -142,7 +142,7 @@ print(result.content)
 
 ## Architecture
 
-![Workflow](docs/images/workflow.png)
+![Architecture](docs/images/architecture.svg)
 
 1. **Reasoning model** receives the user's request plus tool definitions for all 16 tools.
 2. **Vision tools** (look, ocr, zoom, count, locate) route through the `Perception` module, which shells `vision_eyes` — the compiled Apple Vision binary — for zero-token analysis.
