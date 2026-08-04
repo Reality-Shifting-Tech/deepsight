@@ -6,42 +6,41 @@ quick-reference. Where the two overlap, CONTRIBUTING wins.
 
 ## What this is
 
-DeepSight is an MIT-licensed, device-native vision toolkit. `deepsight
-describe` describes any image using the OS's own vision frameworks (Apple
-Vision on macOS): OCR, scene classification, saliency, face/human/rectangle
-detection. No server, no network, zero tokens. Python 3.11+, setuptools src
-layout. The compiled `vision_eyes` binary is the eyes; a small CLI
-(`__main__.py`) shells it directly. A vision-session loop (orchestrator +
-perception) is available as a library for text-only LLMs, with an optional
-reasoning backend (DeepSeek default). Currently at 0.1.0 (initial release).
+DeepSight is an MIT-licensed, device-native vision toolkit that turns any
+text-only LLM into a multimodal desktop agent. It provides **16 tools** across
+four layers: vision analysis (look, ocr, zoom, count, locate), live screen
+capture (capture, watch), web grounding (ground), and desktop automation
+(click, type, key, scroll, open, focus, apps, window). All vision is handled
+by a compiled Swift binary (`vision_eyes`) using Apple Vision — zero tokens,
+zero GPU, zero network. Desktop automation uses macOS `osascript` (built-in)
+or `cliclick` (recommended). Web grounding is optional, gated by
+`DEEPSIGHT_SEARCH_API_KEY`.
 
-**Hard rule: vision is device-native. Never introduce a server, an HTTP
-endpoint, or a remote VLM for vision.** No ports, no `serve` command, no
-Ollama/OpenAI-compatible vision backends. The device's own frameworks are the
-product.
+Vision is always device-native. Action tools are local-only. The only network
+call is the optional reasoning backend (any OpenAI-compatible chat endpoint)
+and the optional Brave Search API for grounding.
 
 ## Toolchain
 
-- Python >= 3.11 (3.12 is also supported and tested in CI).
+- Python >= 3.11 (3.12 also supported and tested in CI).
 - `uv` for environment and dependency management.
-- macOS + Xcode SDK to compile `vision_eyes` from
-  `scripts/vision_eyes.swift` (see docs/architecture.md for the command).
-- No live infrastructure is required to run the test suite; unit tests must
-  not call external model endpoints.
+- macOS + Xcode SDK to compile `vision_eyes` from `scripts/vision_eyes.swift`
+  (the SDK path is pinned in the Makefile).
+- Unit tests must not call external model endpoints — inject fakes.
 
 ## Commands
 
 Run from the repo root unless noted.
 
 ```bash
-uv venv
+uv sync
 uv pip install -e '.[dev]'
 
 make lint        # ruff check . (zero-warning policy)
 make typecheck   # mypy src
 make test        # pytest (testpaths: tests)
 make format      # ruff format + ruff check --fix
-make bench       # benchmark comparison of baseline modes
+make build-eyes  # compile scripts/vision_eyes.swift
 ```
 
 Full pre-push gate: `make all` (lint + typecheck + test).
@@ -49,32 +48,67 @@ Full pre-push gate: `make all` (lint + typecheck + test).
 ## Layout
 
 ```
-src/deepsight/     CLI + vision session loop, tool protocol, backends,
-                   perception cache
-  __main__.py      CLI entry point (deepsight describe / doctor)
-bench/             Cloud-streaming benchmark harness (bench/harness.py) and
-                   the BENCHES registry (ChartQA, MathVista, OCRBench-v2)
-docs/              architecture.md, benchmarks.md
-tests/             pytest suite (testpaths configured in pyproject.toml)
-scripts/           vision_eyes.swift - the native Apple Vision binary source
+src/deepsight/         Core package
+  __main__.py          CLI: deepsight describe / doctor
+  backends.py          NativeVisionBackend, ReasoningBackend, SearchBackend,
+                       ComputerUseBackend, VisionResult, ReasoningResult,
+                       SearchResult, ToolCall
+  config.py            pydantic-settings with DEEPSIGHT_* prefix
+  orchestrator.py      Tool loop, ACTION_TOOL_DEFINITIONS, Orchestrator
+  perception.py        Vision tools (TOOL_DEFINITIONS), Perception class,
+                       sketch, dhash, cross-capture memory
+  cache.py             Content-addressed perception cache
+bench/                 Cloud-streaming benchmark harness
+docs/                  Architecture docs, images
+  images/              Hero, workflow, and demo screenshots for README
+tests/                 pytest suite
+scripts/              vision_eyes.swift — native Apple Vision binary source
 ```
 
-The package lives under `src/` (setuptools `packages.find where = ["src"]`);
-imports are `deepsight.*`, not `src.deepsight.*`.
+## Tools
+
+### Vision tools (defined in `perception.py:TOOL_DEFINITIONS`)
+
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `look` | x, y, w, h | Describe a region of the image |
+| `ocr` | x, y, w, h | Transcribe text in a region |
+| `zoom` | x, y, w, h | Upscale and inspect a region |
+| `count` | what, [x, y, w, h] | Count objects matching a description |
+| `locate` | what, [x, y, w, h] | Find object by description, return bbox |
+| `capture` | [region] | Screenshot + full vision analysis |
+| `watch` | [seconds, interval, until] | Temporal screen monitoring |
+| `ground` | what, [query] | Web search + page fetch for verification |
+
+### Action tools (defined in `orchestrator.py:ACTION_TOOL_DEFINITIONS`)
+
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `click` | x, y | Click at %-coordinate |
+| `type` | text | Type into focused field |
+| `key` | keys | Keyboard shortcut |
+| `scroll` | [direction, clicks] | Scroll active window |
+| `open` | name | Launch or activate an app |
+| `focus` | window | Focus window by title substring |
+| `apps` | *(none)* | List running apps + windows |
+| `window` | [name, x, y, w, h] | Resize/reposition window |
+
+Routing: action tools are dispatched to `ComputerUseBackend.execute()` in the
+orchestrator loop; vision tools go to `Perception.execute()`. The
+`_tool_defs()` function merges both into a single tool list.
 
 ## Configuration
 
-Runtime configuration is via environment variables (see README). Key ones for
-development:
+Runtime configuration is via environment variables (see README). Key ones:
 
-- `DEEPSIGHT_VISION_BIN` - path to the compiled native vision binary.
-- `DEEPSIGHT_REASONING_API_KEY` - optional, only for the vision-session loop.
+- `DEEPSIGHT_VISION_BIN` — path to compiled vision_eyes binary (required)
+- `DEEPSIGHT_REASONING_API_KEY` — for the reasoning loop (optional)
+- `DEEPSIGHT_SEARCH_API_KEY` — Brave Search key for grounding (optional)
 
 ## Conventions (enforced in review/CI)
 
 - Conventional Commits: `<type>(<scope>): <imperative summary>`; types
-  `feat|fix|chore|docs|refactor|test|ci|build|perf`. The changelog is
-  maintained from these messages.
+  `feat|fix|chore|docs|refactor|test|ci|build|perf`.
 - Ruff clean with zero warnings (select `E,F,I,UP,B,SIM`, line length 100).
 - mypy clean over `src/` (`disallow_untyped_defs`, `warn_unused_ignores`).
 - New behavior ships with tests. Tests must not require live model endpoints;
@@ -83,8 +117,9 @@ development:
   why or nothing), no dead code, no speculative abstractions beyond what the
   current milestone requires, reuse existing vocabulary.
 - One logical change per PR; keep diffs reviewable.
-- Never reintroduce the server. If a change adds a port, an HTTP vision
-  endpoint, or a remote VLM dependency, it will be rejected in review.
+- Device-native vision is a hard requirement: the eyes never call the network
+  or require a GPU. Action tools are local-only. Optional features (web
+  grounding, reasoning backend) are gated by env vars and degrade gracefully.
 
 ## Working agreement for agents
 
@@ -97,3 +132,7 @@ development:
   user images or API keys.
 - `bench/` and `src/` may be actively owned by other agents during the
   initial build; coordinate through the repo root before restructuring either.
+- When adding a new tool: add to the appropriate definition list
+  (TOOL_DEFINITIONS in perception.py or ACTION_TOOL_DEFINITIONS in
+  orchestrator.py), implement the handler method, route in execute(), add
+  tests, update this file and README.

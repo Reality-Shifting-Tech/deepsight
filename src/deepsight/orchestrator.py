@@ -179,26 +179,36 @@ ACTION_TOOL_DEFINITIONS = [
 VisionBackendType = NativeVisionBackend
 
 SYSTEM_PROMPT = (
-    "You are DeepSight, an AI with interactive vision. You can inspect images by calling tools.\n\n"
+    "You are DeepSight, an AI with interactive vision and desktop control. "
+    "You can inspect images by calling tools.\n\n"
     "An image is attached to this conversation. A scene sketch describing it was generated "
     "first. Use the sketch as your primary source: answer directly from it whenever it contains "
     'the information you need. If the sketch has an "answer" field, respond with that value '
-    "immediately and stop: do not re-derive it, do not call tools. "
+    "immediately and stop: do not re-derive it, do not call tools.\n\n"
+    "The following VISION tools are always available for inspecting the image:\n"
+    "  look, ocr, zoom, count — inspect regions and read text\n"
+    "  locate — find an object by description and get its coordinates\n"
+    "  ground — search the web to verify a fact (requires an API key)\n"
+    "  capture — take a screenshot of the live screen\n"
+    "  watch — monitor the screen over time for changes\n\n"
+    "IMPORTANT: If you are analyzing a static image (not a live screen), "
+    "do NOT call ground, capture, or watch — they are for live desktop use. "
+    "For a static image, use look, ocr, zoom, count, or locate only.\n\n"
     "The sketch may include OCR text (jersey/logo/UI text), scene labels, body-pose counts, "
     "face attributes, a color palette, object counts, and a sports line naming detected "
     "sports/equipment concepts (e.g. `sports: baseball(0.7)`). "
     "If the sports line lists two or more DISTINCT sports, the photo shows a group of athletes "
     "from different sports, typically the same city's teams posing together, NOT fans of one "
     "team. Treat it as an athletes' group photo, state the multi-sport nature explicitly, and "
-    "use OCR team names plus any city hints to name the teams. "
-    "Use the tools only when the sketch is missing or ambiguous: "
-    "read text with `ocr`, zoom into small areas with `zoom`, inspect regions with `look`, and "
-    "count objects with `count` (one call counts them all; do not count one by one). "
+    "use OCR team names plus any city hints to name the teams.\n\n"
+    "Use the vision tools only when the sketch is missing or ambiguous: "
+    "read text with `ocr`, zoom into small areas with `zoom`, inspect regions with `look`, "
+    "and count objects with `count` (one call counts them all; do not count one by one). "
     "Be surgical: ask only for what you actually need, then answer. You may issue "
     "MULTIPLE tool calls in a single turn (for example, look at several regions at once); batch "
     "them rather than inspecting one region per turn.\n\n"
     "Answer the user's question as soon as you have enough information. Counting questions: "
-    'prefer the sketch\'s object list or "answer" field; only call `count` '
+    "prefer the sketch's object list or \"answer\" field; only call `count` "
     "when the sketch is ambiguous.\n\n"
     "When you have enough information, answer the user's question directly and stop calling "
     "tools.\n\n"
@@ -214,7 +224,7 @@ SYSTEM_PROMPT = (
     "no JSON, no robotic dumps; vary sentence length like a human. Keep it reasonably "
     "concise: a short paragraph or two for casual questions, a bit more when asked. Never "
     "mention the sketch, tools, OCR, or the vision pipeline; just talk about the image. "
-    'If the sketch has an "answer" field, use that value as ground truth (it may be an '
+    "If the sketch has an \"answer\" field, use that value as ground truth (it may be an "
     "exact count or value) and state it naturally inside your response."
 )
 
@@ -239,9 +249,15 @@ class SessionResult:
         return self.prompt_tokens + self.completion_tokens
 
 
-def _tool_defs() -> list[dict[str, Any]]:
-    """Merge vision tools (TOOL_DEFINITIONS) with action tools."""
-    all_tools = list(TOOL_DEFINITIONS) + list(ACTION_TOOL_DEFINITIONS)
+def _tool_defs(include_actions: bool = True) -> list[dict[str, Any]]:
+    """Merge vision tools with action tools.
+
+    ``include_actions=False`` excludes desktop-action tools (click, type,
+    etc.) for vision-only sessions where no ComputerUseBackend is present.
+    """
+    all_tools = list(TOOL_DEFINITIONS)
+    if include_actions:
+        all_tools.extend(ACTION_TOOL_DEFINITIONS)
     return [
         {
             "type": "function",
@@ -355,7 +371,7 @@ class Orchestrator:
             rounds += 1
             result = self.reasoning.chat(
                 messages,
-                tools=_tool_defs(),
+                tools=_tool_defs(include_actions=self.computer is not None),
                 max_tokens=self.tool_round_max_tokens,
                 response_format=response_format,
             )
@@ -365,7 +381,7 @@ class Orchestrator:
                 _emit(on_event, "🔁 widening output budget...")
                 result = self.reasoning.chat(
                     messages,
-                    tools=_tool_defs(),
+                    tools=_tool_defs(include_actions=self.computer is not None),
                     max_tokens=self.final_max_tokens,
                     response_format=response_format,
                 )

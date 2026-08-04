@@ -5,30 +5,87 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](pyproject.toml)
 [![CI](https://github.com/Reality-Shifting-Tech/deepsight/actions/workflows/eval.yml/badge.svg)](https://github.com/Reality-Shifting-Tech/deepsight/actions/workflows/eval.yml)
 
-Device-native vision for text-only AI. DeepSight runs Apple Vision on your Mac, converts pixels into structured text signals (OCR, scene, sports, faces, pose, colors), and feeds them to any OpenAI-compatible model. No vision model, no GPU, no server, no per-image token cost.
+> **Turn any text-only LLM into a multimodal desktop agent.** DeepSight gives a reasoning model (DeepSeek, OpenAI, or any OpenAI-compatible backend) interactive vision and desktop control — all on-device, zero tokens for vision, no GPU required.
 
-The vision engine is a compiled Swift binary (`vision_eyes`); the Python package wraps it in a CLI and an optional reasoning loop.
+![DeepSight hero](docs/images/hero.png)
 
 ---
 
 ## Features
 
-- **Zero-token vision**: one `vision_eyes` run extracts everything Apple Vision can see, locally, in milliseconds.
-- **No server, no API**: the eyes never call the network. Results are plain text you own.
-- **Reasoning loop**: optional `Orchestrator` turns the sketch into a question-answering session where a text-only LLM can look, crop, and zoom (OpenAI-compatible backends: DeepSeek, OpenAI, local, anything).
-- **Sports-aware**: the classifier maps raw Vision labels to real sports (baseball, basketball, soccer, surfing, ice hockey, ...) and reports them on a dedicated line.
-- **Regression-tested**: 19-image evaluation manifest, nightly watcher, and a macOS CI job keep the eyes honest.
-- **MIT licensed**, zero runtime Python dependencies beyond the standard library and pydantic.
+DeepSight exposes **16 tools** to the reasoning model, organized into four layers.
 
-## Requirements
+### 👁️ Vision tools — see the screen
 
-| Component | Requirement |
-|---|---|
-| OS | macOS 14.0+ (Apple Silicon or Intel) |
-| Xcode | Command Line Tools (`xcode-select --install`), for compiling the Swift binary |
-| Python | 3.11+ |
-| Package manager | [uv](https://docs.astral.sh/uv/) (or pip + venv) |
-| Reasoning API key | Optional, only for the question-answering loop |
+| Tool | What it does |
+|------|-------------|
+| `look` | Describe a rectangular region of the image |
+| `ocr` | Transcribe all text in a region, exactly as written |
+| `zoom` | Zoom into a region for small-detail inspection |
+| `count` | Count objects matching a description in a region |
+| `locate` | Find an object by description and return its bounding box (x%, y%, w%, h%) |
+
+All vision tools are zero-token — they use Apple Vision via a compiled Swift binary on your Mac. No network, no GPU, no API calls.
+
+### 📸 Live capture tools — see what's happening now
+
+| Tool | What it does |
+|------|-------------|
+| `capture` | Screenshot the screen (or a specific window) and analyze it with the full vision pipeline |
+| `watch` | Monitor the screen over time — captures at an interval, uses perceptual hashing to skip identical frames, returns a timeline of changes. Optional `until` param stops when target text appears |
+
+After `capture`, all subsequent vision tools operate on the captured screen. The model can capture, inspect, act, then capture again.
+
+### 🌐 Grounding tools — verify facts
+
+| Tool | What it does |
+|------|-------------|
+| `ground` | Search the web for a claim or entity, fetch the top result, and return a verification summary with citations |
+
+Powered by Brave Search. Gated by `DEEPSIGHT_SEARCH_API_KEY` — degrades gracefully when unset.
+
+### 🖱️ Action tools — interact with the desktop
+
+| Tool | What it does |
+|------|-------------|
+| `click` | Click at a position (x%, y% — matches locate output) |
+| `type` | Type text into the focused input field |
+| `key` | Press keyboard shortcuts (`cmd+s`, `return`, `escape`, `ctrl+c`) |
+| `scroll` | Scroll the active window (direction, clicks) |
+| `open` | Launch or activate an application by name |
+| `focus` | Bring a window to front by matching its title |
+| `apps` | List all visible applications and their window titles |
+| `window` | Resize or reposition a window using % screen coordinates |
+
+Action tools use macOS `osascript` (built-in) or `cliclick` (recommended: `brew install cliclick`). Requires Accessibility permission in System Settings.
+
+---
+
+## Demo: build a game with AI
+
+```python
+from deepsight.orchestrator import Orchestrator
+from deepsight.backends import NativeVisionBackend, ReasoningBackend, ComputerUseBackend
+
+# Set up the agent
+vision = NativeVisionBackend(bin_path="vision_eyes")
+reasoning = ReasoningBackend(
+    base_url="https://api.deepseek.com/v1",
+    api_key="sk-...",
+    model="deepseek-v4-flash",
+)
+agent = Orchestrator(vision=vision, reasoning=reasoning, computer=ComputerUseBackend())
+
+# The model uses all 16 tools autonomously:
+agent.run(
+    image_url="data:image/png;base64,...",
+    user_text="Open a terminal, create a new game project, build it, "
+              "then capture the result and tell me if it compiled.",
+    response_format={"type": "json_object"},
+)
+```
+
+The model will: open Terminal, type commands, capture the screen to check output, locate errors, fix them, rebuild, and report the result.
 
 ---
 
@@ -38,142 +95,205 @@ The vision engine is a compiled Swift binary (`vision_eyes`); the Python package
 git clone https://github.com/Reality-Shifting-Tech/deepsight.git
 cd deepsight
 
-# 1. install python deps (creates .venv)
+# 1. install python deps
 uv sync
 
 # 2. compile the vision engine (Apple Vision, on-device)
 make build-eyes
 
-# 3. point the package at the binary and describe an image
-export DEEPSIGHT_VISION_BIN="$PWD/eval/.cache/vision_eyes"
-uv run deepsight describe path/to/your/image.jpg
+# 3. describe an image
+export DEEPSIGHT_VISION_BIN="$PWD/scripts/vision_eyes"
+uv run deepsight describe path/to/image.jpg
+
+# 4. check connectivity
+uv run deepsight doctor
 ```
 
-`deepsight describe` prints the scene, any detected text, and the people/object counts. For the full signal dump (sports line, pose, colors, saliency), run the binary directly:
+### One-shot describe
 
 ```bash
-"$DEEPSIGHT_VISION_BIN" path/to/your/image.jpg
+uv run deepsight describe path/to/image.jpg
 ```
 
-`deepsight doctor` verifies the binary, the Python package, and the reasoning backend configuration.
+Output: OCR text, scene classification, face/human/animal counts, detected sports, color palette, bounding boxes for every detected object.
 
-### Terminal demo
-
-`vision_eyes` output on a public-domain surfing photo. The `sports:` line is the sports-aware classifier; `pose:` comes from Vision's human-body detection.
-
-![vision_eyes terminal output](docs/images/terminal-demo.png)
-
----
-
-## How it works
-
-![DeepSight architecture](docs/images/architecture.png)
-
-1. `vision_eyes` runs Apple Vision requests (OCR, scene classification, saliency, face/body detection, colors) on the full frame, the salient region, and grid cells.
-2. Results are flattened into a compact text sketch. The eyes never leave your machine.
-3. `deepsight describe` prints that sketch. That's the whole package if you just need signals.
-4. For Q&A, the `Orchestrator` hands the sketch to a text-only LLM. The model can request crops and zoom regions; the loop reruns the eyes on those regions and continues until it has an answer. A `PerceptionCache` dedupes repeated regions across the session.
-
-## Library: vision-session loop
-
-Give a text-only LLM the ability to see, in a few lines:
+### Vision session (reasoning loop)
 
 ```python
 from deepsight.backends import NativeVisionBackend, ReasoningBackend
-from deepsight.cache import PerceptionCache
+from deepsight.orchestrator import Orchestrator
+
+vision = NativeVisionBackend(bin_path="vision_eyes")
+reasoning = ReasoningBackend(
+    base_url="https://api.deepseek.com/v1",
+    api_key="sk-...",
+    model="deepseek-v4-flash",
+)
+
+session = Orchestrator(vision=vision, reasoning=reasoning)
+result = session.run(
+    image_url="https://example.com/screenshot.png",
+    user_text="What's on the screen? Find any text and describe the layout.",
+)
+print(result.content)
+```
+
+---
+
+## Architecture
+
+![Workflow](docs/images/workflow.png)
+
+1. **Reasoning model** receives the user's request plus tool definitions for all 16 tools.
+2. **Vision tools** (look, ocr, zoom, count, locate) route through the `Perception` module, which shells `vision_eyes` — the compiled Apple Vision binary — for zero-token analysis.
+3. **Live capture** (`capture`, `watch`) uses macOS `screencapture` to grab the screen, stores the result as the active image, and runs the full vision pipeline on it.
+4. **Action tools** (click, type, key, scroll, open, focus, apps, window) route through `ComputerUseBackend`, which uses macOS `osascript` or `cliclick` for desktop automation.
+5. **Grounding** (`ground`) uses `SearchBackend` to search the web via Brave Search API.
+6. **Structured output** — pass `response_format` to get JSON-schema-constrained answers.
+7. **Cross-capture memory** — perceptual hashing (dhash) + OCR set diff tracks what changed between captures.
+8. **Perception cache** deduplicates repeated vision queries within a session.
+
+---
+
+## Tool reference
+
+### `look(x, y, w, h)`
+Inspect a region of the image. All coordinates are percentages (0-100). Returns a description of what's there.
+
+### `ocr(x, y, w, h)`
+Transcribe text in a region. Exact transcription including line breaks.
+
+### `zoom(x, y, w, h)`
+Upscale and inspect a region for small details.
+
+### `count(what, [x, y, w, h])`
+Count objects matching a description. Pass a `what` string like "people", "red cars", "buttons".
+
+### `locate(what, [x, y, w, h])`
+Find an object by description. Returns normalized bounding box coordinates plus confidence. Uses Apple Vision's on-device detection (faces, humans, animals, text, rectangles, salient objects). Example: `locate("the login button")` returns `Login (85%): x=40% y=60% w=20% h=8%`.
+
+### `capture([region])`
+Take a screenshot. Optional `region`: `"screen"` (default) or a window title substring (e.g. `"Terminal"`, `"Safari"`). Returns a full scene analysis with OCR, detected objects, and changes since the last capture.
+
+### `watch([seconds=10, interval=1, until=""])`
+Monitor the screen over time. Uses perceptual hashing to skip identical frames. Optional `until` stops early when text appears. Returns a timeline.
+
+### `ground(what, [query])`
+Search the web to verify a fact. Fetches the top result's page content for deep verification. Requires `DEEPSIGHT_SEARCH_API_KEY`.
+
+### `click(x, y)`
+Click at screen position (percentages). Use after `locate` to click on a specific object. Requires Accessibility permission.
+
+### `type(text)`
+Type text into the currently focused input field.
+
+### `key(keys)`
+Press keyboard shortcuts: `"cmd+s"`, `"return"`, `"escape"`, `"ctrl+c"`, `"tab"`, `"up"`, `"down"`.
+
+### `scroll([direction="down", clicks=3])`
+Scroll the active window.
+
+### `open(name)`
+Launch or activate an application: `"Terminal"`, `"Safari"`, `"Xcode"`, `"Finder"`.
+
+### `focus(window)`
+Bring a window to front by title substring. Use `apps` first to see available windows.
+
+### `apps()`
+List all visible running applications and their window titles. Returns something like:
+```
+Safari (2 windows)
+  - DeepSight README — Edit
+  - GitHub — Pull Requests
+Terminal (1 window)
+  - bash — npm run build
+```
+
+### `window([name, x, y, w, h])`
+Resize or reposition a window. All values in % of screen. Example: `window(x=25, y=25, w=50, h=50)` centers the window.
+
+---
+
+## Complete example: self-driving developer loop
+
+```python
+from deepsight.backends import NativeVisionBackend, ReasoningBackend, \
+    ComputerUseBackend, SearchBackend
 from deepsight.orchestrator import Orchestrator
 from deepsight.config import get_settings
 
-settings = get_settings()  # reads DEEPSIGHT_* env vars + optional .env
+settings = get_settings()
 
-vision = NativeVisionBackend(bin_path=settings.vision_bin)
-reasoning = ReasoningBackend(
-    base_url=settings.reasoning_base_url,
-    api_key=settings.reasoning_api_key,      # any OpenAI-compatible key
-    model=settings.reasoning_model,          # default deepseek-v4-flash
-)
-session = Orchestrator(
-    vision=vision,
-    reasoning=reasoning,
-    cache=PerceptionCache(),
-    max_look_rounds=settings.max_look_rounds,
+agent = Orchestrator(
+    vision=NativeVisionBackend(bin_path=settings.vision_bin),
+    reasoning=ReasoningBackend(
+        base_url=settings.reasoning_base_url,
+        api_key=settings.reasoning_api_key,
+        model=settings.reasoning_model,
+    ),
+    computer=ComputerUseBackend(),
+    search=SearchBackend(api_key=settings.search_key),
 )
 
-result = session.run(
-    "https://example.com/photo.jpg",        # or a local path / PIL image
-    user_text="What is the person holding, and is there any text?",
+result = agent.run(
+    image_url="data:image/png;base64,...",
+    user_text=(
+        "Open Terminal. Run 'npm run dev'. Wait for the dev server to start. "
+        "Capture the browser at localhost:5173. Describe what you see. "
+        "If there are errors, read them, fix the code, and try again. "
+        "Tell me when the app is running and what it looks like."
+    ),
 )
-print(result.answer)
-print(result.total_tokens())
 ```
-
-The loop is optional. Without a reasoning key, `describe` still works fully offline.
 
 ---
 
 ## Configuration
 
-All settings are environment variables (or a `.env` file in the repo root). Only `DEEPSIGHT_VISION_BIN` matters for offline use.
+All settings are environment variables (or a `.env` file in the repo root). Variables use the `DEEPSIGHT_` prefix.
 
 | Variable | Default | Description |
-|---|---|---|
-| `DEEPSIGHT_VISION_BIN` | `vision_eyes` | Path to the compiled Swift binary |
-| `DEEPSIGHT_REASONING_BASE_URL` | `https://api.deepseek.com/v1` | Any OpenAI-compatible endpoint |
-| `DEEPSIGHT_REASONING_API_KEY` | *(empty)* | Key for the reasoning backend |
-| `DEEPSIGHT_REASONING_MODEL` | `deepseek-v4-flash` | Model name |
-| `DEEPSIGHT_REASONING_TEMPERATURE` | `0.2` | Sampling temperature |
-| `DEEPSIGHT_REASONING_MAX_TOKENS` | `1024` | Per-turn output budget |
-| `DEEPSIGHT_REASONING_TOOL_ROUND_MAX_TOKENS` | `1024` | Budget for tool-call rounds |
-| `DEEPSIGHT_MAX_LOOK_ROUNDS` | `5` | Max look/crop/zoom rounds per session |
-| `DEEPSIGHT_SKETCH_ENABLED` | `true` | Include the vision sketch in prompts |
-| `DEEPSIGHT_CACHE_ENABLED` | `true` | Cache repeated regions per session |
-| `DEEPSIGHT_CACHE_TTL_SECONDS` | `3600` | Perception cache TTL |
-
----
-
-## Regression eval
-
-The eyes are held to a 19-image public-domain manifest across three tiers:
-
-- **Tier 0 (eyes)**: raw binary output against per-image expectations. Currently **18/19 images, 44/45 checks (97.8%)**.
-- **Tier 1 (reasoning loop)**: blind descriptions by the text-only model, scored on required/forbidden facts. Currently **17/19, 108/110 (98.2%)**, ~$0.06 per run.
-- **Tier 2 (CI)**: `make eval-eyes-ci` runs tier 0 on every push via [GitHub Actions](.github/workflows/eval.yml) (macOS runner compiles the Swift source from scratch).
-- **Nightly watcher**: a cron job (`eval/nightly.py`) reruns both tiers daily and only reports regressions. Gap-tagged entries (currently: B&W 1964 tennis photo, a deliberate taxonomy limitation) are tracked without failing the suite.
-
-```bash
-make eval-eyes        # tier 0, local
-make eval-eyes-ci     # tier 0, CI-safe (no golden photos needed)
-uv run python eval/run_loop_eval.py   # tier 1 (needs DEEPSIGHT_REASONING_API_KEY)
-python eval/nightly.py                # nightly watcher (regression diff)
-```
-
-Details, per-image expectations, and the gaps ledger live in [eval/](eval/).
+|----------|---------|-------------|
+| `DEEPSIGHT_VISION_BIN` | `vision_eyes` | Path to the compiled Apple Vision binary |
+| `DEEPSIGHT_REASONING_BASE_URL` | `https://api.deepseek.com/v1` | OpenAI-compatible chat endpoint |
+| `DEEPSIGHT_REASONING_API_KEY` | *(empty)* | API key for the reasoning model |
+| `DEEPSIGHT_REASONING_MODEL` | `deepseek-v4-flash` | Model name for the reasoning loop |
+| `DEEPSIGHT_SEARCH_API_KEY` | *(empty)* | Brave Search API key for `ground` tool |
+| `DEEPSIGHT_MAX_LOOK_ROUNDS` | `5` | Max tool rounds per vision session |
+| `DEEPSIGHT_SKETCH_ENABLED` | `true` | Include scene sketch in prompts |
+| `DEEPSIGHT_CACHE_ENABLED` | `true` | Cache repeated vision regions |
+| `DEEPSIGHT_CACHE_TTL_SECONDS` | `3600` | Perception cache expiry |
 
 ---
 
 ## Development
 
 ```bash
-make test          # pytest (unit tests, no macOS APIs required)
-make lint          # ruff
+make test          # pytest (60+ tests, no macOS APIs)
+make lint          # ruff (zero-warning policy)
 make typecheck     # mypy
 make all           # test + lint + typecheck
-make build-eyes    # compile the Swift binary
+make build-eyes    # compile scripts/vision_eyes.swift
 ```
 
-The Swift source ships in the repo at `scripts/vision_eyes.swift`; `make build-eyes` is the canonical compile command. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR.
+The Swift source is at `scripts/vision_eyes.swift`; `make build-eyes` is the canonical compile. Tests must not require live model endpoints — backends are mocked.
+
+---
 
 ## Troubleshooting
 
 | Symptom | Fix |
-|---|---|
-| `eyes binary not found` | `make build-eyes`, then set `DEEPSIGHT_VISION_BIN` to the built binary |
-| Compile fails: SDK not found | Install Xcode Command Line Tools: `xcode-select --install` |
-| Reasoning loop errors | Set `DEEPSIGHT_REASONING_API_KEY` (and `DEEPSIGHT_REASONING_BASE_URL` if not using DeepSeek) |
-| New images not detected | Add the image to `eval/images/` and an entry to `eval/manifest.json`, then `make eval-eyes` |
+|---------|-----|
+| `vision binary not found` | `make build-eyes`, set `DEEPSIGHT_VISION_BIN` |
+| Vision tools return no results | Check `deepsight doctor` |
+| Action tools fail silently | Grant Accessibility permission in System Settings > Privacy & Security > Accessibility |
+| `click` / `type` don't work | `brew install cliclick` for more reliable input |
+| `ground` returns unavailable | Set `DEEPSIGHT_SEARCH_API_KEY` (get one free at [brave.com/search/api](https://brave.com/search/api/)) |
+| `capture` returns empty | Check `screencapture` permissions (Terminal needs Screen Recording permission) |
+| Compile fails: SDK not found | `xcode-select --install` |
 
 ---
 
-## License and credits
+## License
 
-MIT, see [LICENSE](LICENSE). Vision functionality is built on Apple's Vision framework. Third-party notices and dependency licenses are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Release history is in [CHANGELOG.md](CHANGELOG.md).
+MIT — see [LICENSE](LICENSE). Built on Apple's Vision framework. Third-party notices in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Release history in [CHANGELOG.md](CHANGELOG.md).
