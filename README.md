@@ -1,4 +1,4 @@
-# <img src="assets/logo.png" alt="DeepSight" width="56" /> DeepSight
+# <img src="assets/logo.png" alt="" width="56" /> DeepSight
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![macOS](https://img.shields.io/badge/macOS-14+-brightgreen.svg)](https://developer.apple.com/macos/)
