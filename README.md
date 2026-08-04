@@ -1,6 +1,7 @@
 # DeepSight
 
-> Interactive vision for text-only LLMs. Drop-in OpenAI-compatible server.
+> Device-native vision. Describe any image with the capabilities already built
+> into your device. No server required. Zero tokens, zero model downloads.
 
 ![License: MIT](https://img.shields.io/github/license/Reality-Shifting-Tech/deepsight)
 ![Python](https://img.shields.io/pypi/pyversions/deepsight)
@@ -8,19 +9,49 @@
 ![CI](https://img.shields.io/github/actions/workflow/status/Reality-Shifting-Tech/deepsight/ci.yml?branch=main)
 ![Status: early development](https://img.shields.io/badge/status-early%20development-orange)
 
-DeepSight is an open-source (MIT) vision proxy that gives text-only LLMs
-interactive vision through a **vision-session loop**: instead of one giant,
-vague description of the whole image, the reasoning model gets a compact scene
-sketch up front and then asks for exactly what it needs using tool calls
-(`look`, `crop`, `ocr`, `zoom`). Each tool call is answered by a targeted,
-small vision-model pass. Cost scales with curiosity, not with image size.
+DeepSight is an open-source (MIT) vision toolkit that runs **on the device**
+using the OS's own vision frameworks. On macOS it uses Apple Vision directly:
+OCR, scene classification, saliency, face/human/rectangle detection. No server
+process, no network call, no tokens burned, no model downloads. Fast and free.
 
-Point any OpenAI-compatible client at `http://localhost:8080/v1` and text-only
-models such as DeepSeek V4 Flash start seeing images. The default stack is
-DeepSeek for reasoning and Ollama `minicpm-v` for vision, but both backends are
-swappable.
+```sh
+deepsight describe screenshot.png
+# OCR text:
+#   MIKE
+#   MYERS
+#   crypto.com
+# Scene: adult(0.91), people(0.91)
+# faces: 1
+```
+
+For text-only LLMs that need interactive vision, DeepSight also ships an
+**optional** OpenAI-compatible server that runs a vision-session loop: the
+reasoning model gets a compact scene sketch up front and then asks for exactly
+what it needs using tool calls (`look`, `crop`, `ocr`, `zoom`). Each tool call
+is answered by a targeted, small vision-model pass. Cost scales with curiosity,
+not with image size. The server is an adapter, not the product; the device is
+the product.
 
 ## How it works
+
+### describe: device-native (no server)
+
+```
++----------------------+
+|  deepsight describe  |  shells the OS vision binary directly
++----------------------+
+        |
+        v
++---------------------------------------------------+
+| Apple Vision (on-device, zero tokens, zero cost)  |
+|  - OCR text extraction                            |
+|  - scene classification (1000+ classes)           |
+|  - attention + object saliency maps               |
+|  - face / human / rectangle detection             |
++---------------------------------------------------+
+```
+
+### serve: optional OpenAI-compatible adapter
 
 ```
 +----------------------+
@@ -30,7 +61,7 @@ swappable.
         |  POST /v1/chat/completions  (image_url content)
         v
 +----------------------+
-|   deepsight server   |  FastAPI, OpenAI-compatible /v1
+|   deepsight server   |  FastAPI, OpenAI-compatible /v1 (optional)
 +----------------------+
         |
         |  vision session loop
@@ -51,8 +82,8 @@ swappable.
 +------------------+     +----------------------+
 | reasoning backend |     |   vision backend     |
 | DeepSeek (default)|     | Ollama minicpm-v     |
-| or any OpenAI /   |     | or any VLM           |
-| Anthropic URL     |     |                      |
+| or any OpenAI /   |     | Apple Vision native  |
+| Anthropic URL     |     | (zero tokens)        |
 +------------------+     +----------------------+
         |                           |
         +------------+--------------+
@@ -84,10 +115,11 @@ The full architecture and design rationale live in
 
 ## Quickstart
 
-Prerequisites: Python >= 3.11, [uv](https://docs.astral.sh/uv) (or pip),
-and an Ollama instance with `minicpm-v` pulled
-(`ollama pull minicpm-v`). A DeepSeek API key is needed for the default
-reasoning backend.
+### describe (device-native, no server)
+
+Prerequisites: Python >= 3.11, [uv](https://docs.astral.sh/uv) (or pip), and on
+macOS a compiled Apple Vision binary (see
+[docs/architecture.md](docs/architecture.md) for the compile command).
 
 ```bash
 # Install from source (pre-release; PyPI publish is tracked in CHANGELOG)
@@ -96,13 +128,24 @@ cd deepsight
 uv venv
 uv pip install -e .
 
-# Configure
-export REASONING_API_KEY=sk-...
-export VISION_BASE_URL=http://localhost:11434/v1   # Ollama (default)
+# Describe any image with the device's own vision. No server, no tokens.
+deepsight describe screenshot.png
+```
 
-# Run
-deepsight
-# or: python -m deepsight
+Set `DEEPSIGHT_VISION_BACKEND=native` and `DEEPSIGHT_VISION_BIN=/path/to/vision_eyes`
+to make native eyes the default vision backend everywhere (server included).
+
+### serve (optional OpenAI-compatible adapter)
+
+For clients that need HTTP (curl, openai SDK, OpenWebUI, LibreChat):
+
+```bash
+# A DeepSeek API key is needed for the default reasoning backend
+export DEEPSIGHT_REASONING_API_KEY=sk-...
+export DEEPSIGHT_VISION_BACKEND=native   # use Apple Vision eyes (zero tokens)
+# or: export DEEPSIGHT_VISION_BASE_URL=http://localhost:11434/v1  # Ollama minicpm-v
+
+deepsight serve --port 8080
 ```
 
 The server listens on `http://localhost:8080/v1` by default. Once the first
@@ -111,16 +154,20 @@ stable release is on PyPI you will also be able to `pip install deepsight` or
 
 ## Configuration
 
-All configuration is via environment variables.
+All configuration is via environment variables with a `DEEPSIGHT_` prefix
+(`DEEPSIGHT_HOST`, `DEEPSIGHT_VISION_BACKEND`, ...), optionally in a `.env`
+file.
 
 | Variable | Default | Description |
 |---|---|---|
-| `REASONING_BASE_URL` | `https://api.deepseek.com/v1` | OpenAI-compatible reasoning backend base URL |
-| `REASONING_API_KEY` | *(required)* | API key for the reasoning backend |
-| `REASONING_MODEL` | `deepseek-v4-flash` | Reasoning model name |
-| `VISION_BASE_URL` | `http://localhost:11434/v1` | OpenAI-compatible vision backend base URL (Ollama) |
-| `VISION_MODEL` | `minicpm-v` | Vision model name |
-| `PORT` | `8080` | HTTP port for the DeepSight server |
+| `DEEPSIGHT_REASONING_BASE_URL` | `https://api.deepseek.com/v1` | OpenAI-compatible reasoning backend base URL |
+| `DEEPSIGHT_REASONING_API_KEY` | *(required for serve)* | API key for the reasoning backend |
+| `DEEPSIGHT_REASONING_MODEL` | `deepseek-v4-flash` | Reasoning model name |
+| `DEEPSIGHT_VISION_BACKEND` | `ollama` | `native` = Apple Vision binary (zero tokens), `ollama` = local VLM |
+| `DEEPSIGHT_VISION_BIN` | `vision_eyes` | Path to the native vision binary (`native` backend) |
+| `DEEPSIGHT_VISION_BASE_URL` | `http://localhost:11434/v1` | OpenAI-compatible vision backend base URL (Ollama) |
+| `DEEPSIGHT_VISION_MODEL` | `minicpm-v` | Vision model name |
+| `DEEPSIGHT_PORT` | `8080` | HTTP port for the DeepSight server |
 | `MAX_TOOL_ROUNDS` | `8` | Maximum look/crop/ocr/zoom rounds per session |
 | `CACHE_TTL` | `3600` | Perception cache TTL in seconds |
 
