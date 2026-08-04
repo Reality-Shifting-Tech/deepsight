@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](pyproject.toml)
 [![CI](https://github.com/Reality-Shifting-Tech/deepsight/actions/workflows/eval.yml/badge.svg)](https://github.com/Reality-Shifting-Tech/deepsight/actions/workflows/eval.yml)
 
-> **Give DeepSeek (or any text-only model) eyes and hands.** DeepSight connects your existing LLM setup to the real world — it can look at images you send, take screenshots of your desktop, read text on screen, click buttons, type into fields, open apps, and search the web to verify facts. All vision runs on-device through Apple Vision: zero tokens, zero GPU, no image data ever leaves your machine.
+> **Give DeepSeek (or any text-only model) eyes and hands.** DeepSight connects your existing LLM setup to the real world — it can look at images you send, take screenshots of your desktop, read text on screen, click buttons, type into fields, open apps, and search the web to verify facts. All vision runs on-device: Apple Vision on macOS, PIL + optional Tesseract OCR on Windows. Zero tokens, zero GPU, no image data ever leaves your machine.
 
 ![DeepSight architecture](docs/images/architecture.svg)
 
@@ -25,7 +25,7 @@ DeepSight exposes **16 tools** to the reasoning model, organized into four layer
 | `count` | Count objects matching a description in a region |
 | `locate` | Find an object by description and return its bounding box (x%, y%, w%, h%) |
 
-All vision tools are zero-token — they use Apple Vision via a compiled Swift binary on your Mac. No network, no GPU, no API calls.
+All vision tools are zero-token — they use Apple Vision on macOS (via a compiled Swift binary) or PIL + optional Tesseract OCR on Windows. No network, no GPU, no API calls.
 
 ### 📸 Live capture tools — see what's happening now
 
@@ -91,23 +91,30 @@ The model will: open Terminal, type commands, capture the screen to check output
 
 ## Quickstart
 
+### macOS
+
 ```bash
 git clone https://github.com/Reality-Shifting-Tech/deepsight.git
 cd deepsight
-
-# 1. install python deps
 uv sync
-
-# 2. compile the vision engine (Apple Vision, on-device)
 make build-eyes
-
-# 3. describe an image
 export DEEPSIGHT_VISION_BIN="$PWD/scripts/vision_eyes"
 uv run deepsight describe path/to/image.jpg
-
-# 4. check connectivity
 uv run deepsight doctor
 ```
+
+### Windows
+
+```powershell
+git clone https://github.com/Reality-Shifting-Tech/deepsight.git
+cd deepsight
+uv sync
+winget install UB-Mannheim.TesseractOCR
+uv run python -m deepsight describe path/to/image.jpg
+uv run deepsight doctor
+```
+
+Windows uses `WindowsVisionBackend` for PIL-based scene analysis (colors, brightness, texture) and optional Tesseract OCR. Desktop automation uses native Windows APIs (`user32.dll`, PowerShell SendKeys) — no additional tools to install.
 
 ### One-shot describe
 
@@ -281,13 +288,16 @@ The Swift source is at `scripts/vision_eyes.swift`; `make build-eyes` is the can
 ## Troubleshooting
 
 | Symptom | Fix |
-|---------|-----|
-| `vision binary not found` | `make build-eyes`, set `DEEPSIGHT_VISION_BIN` |
+|---------|------|
+| `vision binary not found` (macOS) | `make build-eyes`, set `DEEPSIGHT_VISION_BIN` |
 | Vision tools return no results | Check `deepsight doctor` |
-| Action tools fail silently | Grant Accessibility permission in System Settings > Privacy & Security > Accessibility |
-| `click` / `type` don't work | `brew install cliclick` for more reliable input |
-| `ground` returns unavailable | Set `DEEPSIGHT_SEARCH_API_KEY` (get one free at [brave.com/search/api](https://brave.com/search/api/)) |
-| `capture` returns empty | Check `screencapture` permissions (Terminal needs Screen Recording permission) |
+| Action tools fail silently (macOS) | Grant Accessibility permission in System Settings |
+| `click` / `type` don't work (macOS) | `brew install cliclick` for more reliable input |
+| Action tools fail on Windows | Run as normal user (not admin) — `user32.dll` calls work without elevation |
+| `ground` returns unavailable | Set `DEEPSIGHT_SEARCH_API_KEY` (free at [brave.com/search/api](https://brave.com/search/api/)) |
+| `capture` returns empty (macOS) | Grant Screen Recording permission to Terminal |
+| `capture` returns empty (Windows) | Runs as current user — `PIL.ImageGrab` needs a display session |
+| OCR not working (Windows) | Install Tesseract: `winget install UB-Mannheim.TesseractOCR` |
 | Compile fails: SDK not found | `xcode-select --install` |
 
 ---
