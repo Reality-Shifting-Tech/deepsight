@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Soccer stadium false positive.** Dropped `arena` from the sports taxonomy's ice-hockey triggers (stadiums were mapping to `ice hockey(0.85)`) and added the literal `soccer` classifier label to the soccer mapping. The soccer stadium now emits `soccer(0.17)`; hockey detection is unaffected (still `rink(0.94)`). The reasoning loop keeps a propagation anchor (weak soccer signal + `arena` scene label) tracked as a known gap.
+- **Surfing not recognized on the sports line.** The Apple Vision classifier emits `surfboard` for surfer photos, but it was unmapped, so the `sports:` line only reported generic `sports equipment`. Added `surfboard` to the surfing mapping; the surfer photo now emits `sports: sports equipment(0.82), surfing(0.81)` and the manifest expectation moved from the generic fallback to a real `surfing` signal. Closes the public-surfing gap at eyes level.
+- **Loop scoring false alarms.** `score_loop` now treats negated ("no baseball equipment is shown") and hedged ("a faint baseball hint") mentions as non-assertions, so forbidden guards only fail on real claims. New `loop_any` check accepts paraphrase alternatives ("surfing" / "surfer" / "surfboard"). Unit tests cover both. This removes the two stochastic flake sources from the nightly watcher: the SGA photo's correct denial of baseball, and surfing answers that say "surfer" instead of "surfing".
 - **Gap-aware eval exits.** `run_eval.py` treats `gap: true` entries as accepted known gaps (⚠️, non-blocking) and reports a gap entry passing as a 🎉 GAP CLOSED event; `--skip-missing` marks absent images as skipped instead of failed. `status_for`/`exit_code_for` are pure functions covered by unit tests, so CI can run with known gaps without going red.
 - **Reasoning-model tool rounds no longer truncate.** `tool_round_max_tokens`
   (orchestrator) and `DEEPSIGHT_REASONING_TOOL_ROUND_MAX_TOKENS` (settings)
@@ -27,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   look-rounds that never answered.
 
 ### Changed
+
+- **Production-ready README.** Replaced the draft badges (PyPI links for an unpublished package, a CI badge pointing at a nonexistent workflow) with real ones (license, macOS 14+, Python 3.11+, the actual `eval.yml` workflow). Added a generated terminal-demo image and an architecture diagram (`docs/images/`, produced by `docs/make_images.py`), verified-copy library snippets, a requirements table, full environment-variable reference, regression-eval scoreboard, and a troubleshooting table.
 
 - **Natural conversational answers.** The vision-session loop no longer forces
   an ultra-terse "caveman" answer style. The orchestrator prompt now asks the

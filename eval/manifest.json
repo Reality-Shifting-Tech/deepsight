@@ -174,13 +174,13 @@
       "id": "public-surfing",
       "path": "images/public/surfing.jpg",
       "source": "public",
-      "note": "Commons 'A surfer at the wave edit'. Scene reads surfing(0.94); surfboard not in SPORT_MAP, so sports line only gets generic sports equipment. Gap candidate for map expansion.",
+      "note": "Commons 'A surfer at the wave edit'. EYES FIXED 2026-08: surfboard added to SPORT_MAP (was unmapped, sports line only had generic 'sports equipment'). Sports line now emits surfing from the classifier.",
       "expected": {
         "scene_contains": [{"label": "surfing", "rank": 5}],
-        "sports_present": ["sports equipment"]
+        "sports_present": ["surfing"]
       },
       "loop": {
-        "required": ["surfing"],
+        "loop_any": ["surfing", "surfer", "surfboard"],
         "forbidden": ["hockey", "football"]
       }
     },

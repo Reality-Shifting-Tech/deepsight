@@ -111,6 +111,7 @@ let SPORT_MAP: [String: String] = [
     "american football": "american football", "football helmet": "american football",
     "football": "american football", "helmet": "american football",
     "soccer ball": "soccer", "soccer": "soccer",
+    "surfboard": "surfing",
     "volleyball": "volleyball", "tennis ball": "tennis", "tennis racket": "tennis",
     "golf ball": "golf", "golf club": "golf",
     "ice hockey": "ice hockey", "hockey": "ice hockey", "hockey puck": "ice hockey",

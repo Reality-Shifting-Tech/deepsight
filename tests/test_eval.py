@@ -186,3 +186,34 @@ def test_loop_score_normalization() -> None:
     assert all(c["passed"] for c in normed)
     empty = loop_mod.score_loop("t", "nothing here", {"required": []})
     assert empty == []
+
+
+def test_loop_score_any() -> None:
+    loop_mod = load_run_loop_eval()
+    ok = loop_mod.score_loop("t", "A lone surfer standing on his board",
+                             {"loop_any": ["surfing", "surfer", "surfboard"]})
+    assert ok[0]["passed"]
+    bad = loop_mod.score_loop("t", "A dark moody ocean at night",
+                              {"loop_any": ["surfing", "surfer", "surfboard"]})
+    assert not bad[0]["passed"]
+
+
+def test_loop_forbidden_negation_and_hedge() -> None:
+    loop_mod = load_run_loop_eval()
+    # negation: "no baseball" is a denial, not a claim
+    neg = loop_mod.score_loop("t", "Basketball game; no baseball equipment is shown",
+                              {"forbidden": ["baseball"]})
+    assert neg[0]["passed"]
+    # hedging: "a faint baseball hint" is a weak signal report, not a claim
+    hedge = loop_mod.score_loop("t", "Court action, despite a faint baseball hint in the scene",
+                                {"forbidden": ["baseball"]})
+    assert hedge[0]["passed"]
+    # assertion: plain mention fails the guard
+    assert_ = loop_mod.score_loop("t", "The players switch to baseball after warmups",
+                                  {"forbidden": ["baseball"]})
+    assert not assert_[0]["passed"]
+    # mixed: negated + assertive mentions still fail (assertion exists)
+    mixed = loop_mod.score_loop("t", "No hockey today; this is baseball season",
+                                {"forbidden": ["hockey", "baseball"]})
+    assert mixed[0]["passed"]
+    assert not mixed[1]["passed"]

@@ -30,6 +30,7 @@ import argparse
 import base64
 import importlib.util
 import json
+import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -58,20 +59,39 @@ BLIND_PROMPT = (
 
 
 def score_loop(entry_id: str, text: str, loop_block: dict) -> list[dict]:
-    """Score a final description against required/forbidden tokens."""
+    """Score a final description against required/forbidden tokens.
+
+    Checks:
+    - ``required``: every fragment must appear (normalized substring).
+    - ``loop_any``: at least one of the fragments must appear (handles
+      paraphrase variance: "surfing" / "surfer" / "surfboard").
+    - ``forbidden``: a fragment fails only when it is asserted. Mentions
+      that are negated ("no baseball", "not hockey") or hedged as weak
+      signals ("a faint baseball hint", "maybe tennis") do not fail.
+    """
     results: list[dict] = []
-    txt_norm = norm(text)
     detail = f"answer: {text[:200]}"
+    raw_lower = text.lower()
     for frag in loop_block.get("required", []):
-        passed = norm(frag) in txt_norm
+        passed = norm(frag) in norm(text)
         results.append({
             "id": entry_id,
             "check": f"loop_required '{frag}'",
             "passed": passed,
             "detail": detail,
         })
+    for frags in [loop_block.get("loop_any", [])]:
+        if not frags:
+            continue
+        passed = any(norm(f) in norm(text) for f in frags)
+        results.append({
+            "id": entry_id,
+            "check": f"loop_any '{frags}'",
+            "passed": passed,
+            "detail": detail,
+        })
     for frag in loop_block.get("forbidden", []):
-        passed = norm(frag) not in txt_norm
+        passed = not _asserts_fragment(raw_lower, frag.lower())
         results.append({
             "id": entry_id,
             "check": f"loop_forbidden '{frag}'",
@@ -79,6 +99,28 @@ def score_loop(entry_id: str, text: str, loop_block: dict) -> list[dict]:
             "detail": detail,
         })
     return results
+
+
+_NEGATION = re.compile(r"\b(no|not|nor|without|unlikely|rather than)\b[^.!?;\n]{0,30}$")
+_HEDGE = re.compile(r"\b(faint|weak|slight|maybe|perhaps|possibly|hint|trace|supposed)\b[^.!?;\n]{0,20}$")  # noqa: E501
+
+
+def _asserts_fragment(raw_lower: str, frag: str) -> bool:
+    """True when the fragment appears in an assertive (non-negated) context.
+
+    A mention is non-assertive when a negation or hedging word sits within
+    ~30 chars before it: "no baseball equipment", "a faint baseball hint".
+    The fragment fails the guard only if at least one assertive mention
+    exists (e.g. "this is baseball, not hockey" asserts baseball).
+    """
+    unassertive = 0
+    total = 0
+    for m in re.finditer(re.escape(frag), raw_lower):
+        total += 1
+        prefix = raw_lower[max(0, m.start() - 40):m.start()]
+        if _NEGATION.search(prefix) or _HEDGE.search(prefix):
+            unassertive += 1
+    return total > 0 and unassertive < total
 
 
 def main() -> int:
