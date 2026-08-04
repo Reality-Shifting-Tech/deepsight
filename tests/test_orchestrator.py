@@ -118,3 +118,19 @@ def test_cache_hits_reduce_vision_calls(fake_reasoning, fake_vision, png_data_ur
     # sketch once + look once (subsequent identical looks hit the cache)
     assert vision.calls == 2
     assert result.cache_hits >= 1
+
+
+def test_tool_defs_includes_action_tools():
+    """_tool_defs() returns both vision tools and computer-use tools."""
+    from deepsight.orchestrator import _tool_defs, ACTION_TOOL_DEFINITIONS
+
+    defs = _tool_defs()
+    names = {d["function"]["name"] for d in defs}
+    for action in ACTION_TOOL_DEFINITIONS:
+        assert action.name in names, f"{action.name} missing from tool defs"
+    assert "click" in names
+    assert "type" in names
+    assert "key" in names
+    assert "scroll" in names
+    assert "capture" in names
+    assert "watch" in names

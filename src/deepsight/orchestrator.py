@@ -27,9 +27,82 @@ from typing import Any
 import httpx
 from PIL import Image
 
-from .backends import NativeVisionBackend, ReasoningBackend
+from .backends import ComputerUseBackend, NativeVisionBackend, ReasoningBackend, SearchBackend
 from .cache import PerceptionCache
-from .perception import TOOL_DEFINITIONS, Perception
+from .perception import TOOL_DEFINITIONS, ToolDefinition, Perception
+
+ACTION_TOOL_DEFINITIONS = [
+    ToolDefinition(
+        name="click",
+        description=(
+            "Click at a position on screen. Coordinates are percentages "
+            "(0-100) of the screen dimensions for consistency with the "
+            "locate tool — use locate first to find an object's position, "
+            "then click on it. Requires Accessibility permission on macOS."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "x": {"type": "number", "description": "left edge, % of screen width"},
+                "y": {"type": "number", "description": "top edge, % of screen height"},
+            },
+            "required": ["x", "y"],
+        },
+    ),
+    ToolDefinition(
+        name="type",
+        description=(
+            "Type text into the currently focused input field. Use click "
+            "first to focus the right field, then type. Supports any text "
+            "including spaces, punctuation, and special characters."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "description": "the text to type"},
+            },
+            "required": ["text"],
+        },
+    ),
+    ToolDefinition(
+        name="key",
+        description=(
+            "Press a keyboard key or combo. Use for keyboard shortcuts "
+            "like 'cmd+s' (save), 'return', 'tab', 'escape', 'ctrl+c', "
+            "'cmd+shift+4' (screenshot). Single keys: 'return', 'tab', "
+            "'escape', 'up', 'down', 'left', 'right', 'space', 'delete'."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "keys": {"type": "string",
+                         "description": "key or key combo, e.g. 'cmd+s', 'return', 'escape'"},
+            },
+            "required": ["keys"],
+        },
+    ),
+    ToolDefinition(
+        name="scroll",
+        description=(
+            "Scroll the active window. Defaults to 3 clicks down. Use "
+            "negative clicks or 'up' direction to scroll upward."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "direction": {
+                    "type": "string",
+                    "enum": ["down", "up"],
+                    "description": "scroll direction",
+                },
+                "clicks": {
+                    "type": "integer",
+                    "description": "number of scroll clicks (default 3)",
+                },
+            },
+        },
+    ),
+]
 
 VisionBackendType = NativeVisionBackend
 
@@ -95,6 +168,8 @@ class SessionResult:
 
 
 def _tool_defs() -> list[dict[str, Any]]:
+    """Merge vision tools (TOOL_DEFINITIONS) with action tools."""
+    all_tools = list(TOOL_DEFINITIONS) + list(ACTION_TOOL_DEFINITIONS)
     return [
         {
             "type": "function",
@@ -104,7 +179,7 @@ def _tool_defs() -> list[dict[str, Any]]:
                 "parameters": t.parameters,
             },
         }
-        for t in TOOL_DEFINITIONS
+        for t in all_tools
     ]
 
 
@@ -148,6 +223,8 @@ class Orchestrator:
         tool_round_max_tokens: int = 1024,
         final_max_tokens: int | None = None,
         vision_tool_max_tokens: int = 64,
+        search_backend: SearchBackend | None = None,
+        computer: ComputerUseBackend | None = None,
     ) -> None:
         self.reasoning = reasoning
         self.perception = Perception(
@@ -155,7 +232,9 @@ class Orchestrator:
             cache,
             sketch_enabled=sketch_enabled,
             tool_max_output_tokens=vision_tool_max_tokens,
+            search_backend=search_backend,
         )
+        self.computer = computer
         self.max_look_rounds = max_look_rounds
         self.tool_round_max_tokens = tool_round_max_tokens
         self.final_max_tokens = final_max_tokens
@@ -167,13 +246,17 @@ class Orchestrator:
         image_url: str,
         user_text: str,
         on_event: Callable[[str], None] | None = None,
+        response_format: dict[str, Any] | None = None,
     ) -> SessionResult:
         """Execute a full vision session; returns the answer + usage.
-
-        ``on_event`` (optional) receives a short human-readable status string
-        at each milestone ("👁️ viewing image...", "✏️ sketching...",
-        "🔍 looking...", "✅ answering...") so clients can show live
+        at each milestone (``"👁️ viewing image..."``, ``"✏️ sketching..."``,
+        ``"🔍 looking..."``, ``"✅ answering..."``) so clients can show live
         progress while the session runs.
+
+        ``response_format`` (optional) is forwarded to the reasoning model's
+        chat-completions call, enabling structured/JSON output. Pass
+        ``{"type": "json_object"}`` or
+        ``{"type": "json_schema", "json_schema": {...}}``.
         """
         image = load_image(image_url)
         _emit(on_event, "👁️ viewing image...")
@@ -202,6 +285,7 @@ class Orchestrator:
                 messages,
                 tools=_tool_defs(),
                 max_tokens=self.tool_round_max_tokens,
+                response_format=response_format,
             )
             if not result.tool_calls and result.finish_reason == "length":
                 # the output budget truncated the model mid-thought; retry
@@ -211,6 +295,7 @@ class Orchestrator:
                     messages,
                     tools=_tool_defs(),
                     max_tokens=self.final_max_tokens,
+                    response_format=response_format,
                 )
             prompt_tokens += result.prompt_tokens
             completion_tokens += result.completion_tokens
@@ -222,10 +307,22 @@ class Orchestrator:
             if result.wants_tools:
                 # execute all pending tool calls, then feed results back
                 tool_messages: list[dict[str, Any]] = []
+                action_names = {"click", "type", "key", "scroll"}
                 for call in result.tool_calls:
                     tool_calls_total += 1
-                    _emit(on_event, f"🔍 looking ({call.name})...")
-                    observation = self.perception.execute(call.name, call.arguments, image)
+                    if call.name in action_names and self.computer is not None:
+                        _emit(on_event, f"🖱️ {call.name}...")
+                        observation = self.computer.execute(call.name, call.arguments)
+                    elif call.name in action_names:
+                        observation = (
+                            f"{call.name}: computer use not available — "
+                            "no ComputerUseBackend configured"
+                        )
+                    else:
+                        _emit(on_event, f"🔍 looking ({call.name})...")
+                        observation = self.perception.execute(
+                            call.name, call.arguments, image
+                        )
                     tool_messages.append(
                         {
                             "role": "tool",
@@ -307,6 +404,7 @@ class Orchestrator:
             messages,
             tools=None,
             max_tokens=self.final_max_tokens,
+            response_format=response_format,
         )
         prompt_tokens += final.prompt_tokens
         completion_tokens += final.completion_tokens

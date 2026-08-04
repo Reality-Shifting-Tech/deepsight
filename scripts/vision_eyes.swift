@@ -2,13 +2,16 @@ import Foundation
 import Vision
 import AppKit
 
-// DeepSight native eyes v2: Apple Vision framework, zero model downloads.
+// DeepSight native eyes v2.1: added `box:` lines for detected-object bounding boxes.
+// Apple Vision framework, zero model downloads.
 // Usage: vision_eyes <image_path>
 // Emits: OCR text (native + 2x upscaled pass for small text), scene
 //        classification, attention/objectness saliency, face rectangles +
 //        landmarks (roll/yaw/pitch) + capture quality, human rectangles,
 //        body pose (joints, arms-up), rectangle counts, animal species,
-//        dominant color palette.
+//        dominant color palette, and `box:` lines for every detected object
+//        (faces, humans, animals, text regions, rectangles, salient objects)
+//        with normalized coordinates for spatial grounding.
 // Proven on macOS 26.4.1 / Xcode SDK 26.5. Compile:
 //   env SDKROOT=/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk \
 //       swiftc -target arm64-apple-macos14 vision_eyes.swift -o vision_eyes
@@ -16,6 +19,13 @@ import AppKit
 func log(_ s: String) {
     print(s)
     fflush(stdout)
+}
+
+/// Emit a `box:` line for spatial grounding: type, confidence, normalized x/y/w/h, label.
+/// Coordinates are normalized 0.0-1.0 (Apple Vision convention, origin = bottom-left).
+func emitBox(type: String, conf: Float, x: Float, y: Float, w: Float, h: Float, label: String) {
+    // Normalized coordinates: origin bottom-left. Python parser flips Y.
+    log("box:\(type):\(String(format: "%.4f", conf)):\(String(format: "%.4f", x)):\(String(format: "%.4f", y)):\(String(format: "%.4f", w)):\(String(format: "%.4f", h)):\(label)")
 }
 
 guard CommandLine.arguments.count > 1 else { log("usage: vision_eyes <image>"); exit(1) }
@@ -46,7 +56,9 @@ func upscaled(_ cg: CGImage, scale: CGFloat) -> CGImage? {
     return ctx.makeImage()
 }
 
-// 1. OCR — native pass + 2x upscale pass, deduped
+// 1. OCR — native pass + 2x upscale pass, deduped, with bounding boxes
+// The normalized bounding box from Apple Vision has origin at bottom-left.
+// We emit it as-is; the Python parser converts to top-left (% of image).
 var ocrSeen: Set<String> = []
 func ocrPass(_ image: CGImage, tag: String) {
     let req = VNRecognizeTextRequest { req, err in
@@ -58,6 +70,11 @@ func ocrPass(_ image: CGImage, tag: String) {
                 if !s.isEmpty && !ocrSeen.contains(s) {
                     ocrSeen.insert(s)
                     log("  \(s)")
+                    let b = o.boundingBox
+                    emitBox(type: "text", conf: 1.0,
+                            x: Float(b.minX), y: Float(b.minY),
+                            w: Float(b.width), h: Float(b.height),
+                            label: s.replacingOccurrences(of: "\n", with: "⏎"))
                 }
             }
         }
@@ -157,14 +174,20 @@ func classifySports(_ image: CGImage, tag: String) {
 classifySports(cg, tag: "full")
 if let sal = objReq.results?.first as? VNSaliencyImageObservation {
     let objs = sal.salientObjects ?? []
-    var boxes: [CGRect] = []
+    var cropRects: [CGRect] = []
     for o in objs {
         let b = o.boundingBox
         let area = b.width * b.height
-        if area > 0.005 { boxes.append(b) }
+        if area > 0.005 {
+            cropRects.append(b)
+            emitBox(type: "salient", conf: Float(o.confidence),
+                    x: Float(b.minX), y: Float(b.minY),
+                    w: Float(b.width), h: Float(b.height),
+                    label: "salient_object")
+        }
     }
-    boxes.sort { $0.width * $0.height > $1.width * $1.height }
-    for box in boxes.prefix(5) {
+    cropRects.sort { $0.width * $0.height > $1.width * $1.height }
+    for box in cropRects.prefix(5) {
         let px = CGRect(x: box.minX * CGFloat(cg.width),
                         y: (1 - box.maxY) * CGFloat(cg.height),
                         width: box.width * CGFloat(cg.width),
@@ -194,7 +217,7 @@ if sportScores.isEmpty {
     log("sports: " + line)
 }
 
-// 5. Faces — rectangles + landmarks (roll/yaw/pitch)
+// 5. Faces — rectangles + landmarks (roll/yaw/pitch) + bounding boxes
 let faceReq = VNDetectFaceLandmarksRequest { req, err in
     if let err = err { log("FACE ERROR: \(err)") }
     guard let obs = req.results as? [VNFaceObservation] else { return }
@@ -204,6 +227,11 @@ let faceReq = VNDetectFaceLandmarksRequest { req, err in
         let yaw = f.yaw.map { String(format: "%.0f°", $0.doubleValue * 180 / .pi) } ?? "?"
         let pitch = f.pitch.map { String(format: "%.0f°", $0.doubleValue * 180 / .pi) } ?? "?"
         log("face attr: \(i): roll=\(roll) yaw=\(yaw) pitch=\(pitch)")
+        let b = f.boundingBox
+        emitBox(type: "face", conf: Float(f.confidence),
+                x: Float(b.minX), y: Float(b.minY),
+                w: Float(b.width), h: Float(b.height),
+                label: "face")
     }
 }
 run(VNImageRequestHandler(cgImage: cg, options: [:]), [faceReq], label: "faces")
@@ -223,6 +251,13 @@ let humanReq = VNDetectHumanRectanglesRequest { req, err in
     if let err = err { log("HUMAN ERROR: \(err)") }
     if let obs = req.results as? [VNHumanObservation] {
         log("humans: \(obs.count)")
+        for h in obs {
+            let b = h.boundingBox
+            emitBox(type: "human", conf: Float(h.confidence),
+                    x: Float(b.minX), y: Float(b.minY),
+                    w: Float(b.width), h: Float(b.height),
+                    label: "human")
+        }
     }
 }
 run(VNImageRequestHandler(cgImage: cg, options: [:]), [humanReq], label: "humans")
@@ -249,11 +284,22 @@ let poseReq = VNDetectHumanBodyPoseRequest { req, err in
 }
 run(VNImageRequestHandler(cgImage: cg, options: [:]), [poseReq], label: "body pose")
 
-// 7. Rectangles (screens, docs, cards)
+// 7. Rectangles (screens, docs, cards) — with bounding boxes
 let rectReq = VNDetectRectanglesRequest { req, err in
     if let err = err { log("RECT ERROR: \(err)") }
     if let obs = req.results as? [VNRectangleObservation] {
         log("rectangles: \(obs.count)")
+        for r in obs {
+            // Compute axis-aligned bounding box from corner points
+            let xs = [r.topLeft.x, r.topRight.x, r.bottomLeft.x, r.bottomRight.x]
+            let ys = [r.topLeft.y, r.topRight.y, r.bottomLeft.y, r.bottomRight.y]
+            let minX = xs.min()!, maxX = xs.max()!
+            let minY = ys.min()!, maxY = ys.max()!
+            emitBox(type: "rect", conf: Float(r.confidence),
+                    x: Float(minX), y: Float(minY),
+                    w: Float(maxX - minX), h: Float(maxY - minY),
+                    label: "rectangle")
+        }
     }
 }
 rectReq.minimumSize = 0.2
@@ -261,12 +307,21 @@ rectReq.minimumAspectRatio = 0.25
 rectReq.maximumObservations = 8
 run(VNImageRequestHandler(cgImage: cg, options: [:]), [rectReq], label: "rectangles")
 
-// 8. Animals
+// 8. Animals — with bounding boxes
 let animalReq = VNRecognizeAnimalsRequest { req, err in
     if let err = err { log("ANIMAL ERROR: \(err)") }
     if let obs = req.results as? [VNRecognizedObjectObservation] {
         let names = obs.compactMap { $0.labels.first?.identifier }
         log("animals: \(names.isEmpty ? "none" : names.joined(separator: ", "))")
+        for a in obs {
+            if let label = a.labels.first {
+                let b = a.boundingBox
+                emitBox(type: "animal", conf: Float(label.confidence),
+                        x: Float(b.minX), y: Float(b.minY),
+                        w: Float(b.width), h: Float(b.height),
+                        label: label.identifier)
+            }
+        }
     }
 }
 run(VNImageRequestHandler(cgImage: cg, options: [:]), [animalReq], label: "animals")

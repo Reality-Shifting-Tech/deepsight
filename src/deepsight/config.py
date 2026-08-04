@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     cache_enabled: bool = True
     cache_ttl_seconds: int = 3600
 
+    # --- web grounding (optional, gated by search_api_key) ---
+    search_api_key: str = ""
+
     @property
     def reasoning_key(self) -> str | None:
         """API key for the reasoning backend, or None when unset."""

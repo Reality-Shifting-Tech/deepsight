@@ -269,3 +269,93 @@ def test_native_ask_error(monkeypatch, tmp_path):
     res = b.ask("what is this", b"pngdata")
     assert res.text.startswith("vision_eyes error:")
     assert res.prompt_tokens == 0
+
+
+def test_parse_boxes_text_and_faces():
+    """_parse_boxes extracts typed boxes with Y-flip."""
+    raw = (
+        "scene: people(0.9)\n"
+        "  HELLO\n"
+        "box:text:1.0000:0.0521:0.8816:0.1196:0.0403:WEBSITES\n"
+        "box:text:1.0000:0.2166:0.8947:0.0901:0.0240:15-20 Days\n"
+        "box:face:0.9900:0.1000:0.2000:0.3000:0.4000:face\n"
+        "box:human:0.8500:0.0500:0.1000:0.1500:0.6000:human\n"
+        "box:animal:0.9500:0.5000:0.5000:0.1000:0.1000:Cat\n"
+        "box:rect:0.7000:0.6000:0.6000:0.2000:0.3000:rectangle\n"
+        "box:salient:1.0000:0.0000:0.0000:0.5000:0.5000:salient_object\n"
+        "ALL DONE\n"
+    )
+    boxes = NativeVisionBackend._parse_boxes(raw)
+    assert len(boxes) == 7
+
+    # text box: apple-vision y=0.8816 h=0.0403 -> top-left y = 1 - 0.8816 - 0.0403 = 0.0781
+    t = boxes[0]
+    assert t["type"] == "text"
+    assert t["label"] == "WEBSITES"
+    assert abs(t["y"] - 0.0781) < 0.001
+    assert abs(t["x"] - 0.0521) < 0.001
+
+    # face box (index 2)
+    f = boxes[2]
+    assert f["type"] == "face"
+    assert f["confidence"] == 0.99
+    assert abs(f["y"] - 0.4) < 0.001  # 1 - 0.2 - 0.4 = 0.4
+
+    # animal box (index 4)
+    a = boxes[4]
+    assert a["label"] == "Cat"
+    assert abs(a["y"] - 0.4) < 0.001  # 1 - 0.5 - 0.1 = 0.4
+
+    # rect box (index 5)
+    r = boxes[5]
+    assert r["type"] == "rect"
+    assert abs(r["y"] - 0.1) < 0.001  # 1 - 0.6 - 0.3
+
+
+def test_parse_boxes_malformed():
+    """Malformed box lines are silently skipped."""
+    raw = (
+        "box:text:1.0000:0.1:0.2:0.3:0.4:hello\n"
+        "box:truncated:bad\n"
+        "not_a_box_line\n"
+        "box:float_error:not_a_float:0:0:0:0:label\n"
+    )
+    boxes = NativeVisionBackend._parse_boxes(raw)
+    assert len(boxes) == 1
+    assert boxes[0]["label"] == "hello"
+
+
+def test_parse_boxes_empty():
+    """No box lines returns empty list."""
+    boxes = NativeVisionBackend._parse_boxes("scene: empty\nsports: none\n")
+    assert boxes == []
+
+
+def test_native_boxes_success(monkeypatch, tmp_path):
+    """boxes() shells the binary and returns parsed results."""
+    import subprocess
+
+    class FakeProc:
+        returncode = 0
+        stdout = "box:text:1.0:0.0:0.0:1.0:1.0:full frame\nALL DONE\n"
+        stderr = ""
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: FakeProc())
+    b = NativeVisionBackend(bin_path="/fake/vision_eyes")
+    boxes = b.boxes(b"pngdata")
+    assert len(boxes) == 1
+    assert boxes[0]["type"] == "text"
+
+
+def test_native_boxes_error(monkeypatch, tmp_path):
+    """boxes() returns empty on binary error."""
+    import subprocess
+
+    class FakeProc:
+        returncode = 1
+        stdout = ""
+        stderr = "crash"
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: FakeProc())
+    b = NativeVisionBackend(bin_path="/fake/vision_eyes")
+    assert b.boxes(b"pngdata") == []
