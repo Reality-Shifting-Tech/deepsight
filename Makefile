@@ -9,7 +9,7 @@ BENCH_LIMIT         ?= 20
 BENCH_SLEEP         ?= 0
 BENCH_OUT           ?= bench/results
 
-.PHONY: help all test lint typecheck format bench bench-direct bench-bridge eval-eyes eval-synth eval-fetch
+.PHONY: help all test lint typecheck format bench bench-direct bench-bridge eval-eyes eval-eyes-ci eval-loop build-eyes eval-synth eval-fetch
 
 help: ## Show available targets
 	@echo "deepsight targets:"
@@ -32,6 +32,16 @@ format: ## Auto-format with ruff
 
 eval-eyes: ## Eyes regression eval (golden + synthetic + public)
 	$(PYTHON) eval/run_eval.py
+
+build-eyes: ## Compile eyes from repo source (CI / self-contained builds)
+	@mkdir -p eval/.cache
+	env SDKROOT=$(shell xcode-select -p)/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk swiftc -target arm64-apple-macos14 scripts/vision_eyes.swift -o eval/.cache/vision_eyes
+
+eval-eyes-ci: build-eyes eval-synth eval-fetch ## CI variant: compiled-from-source eyes, golden photos skipped
+	DEEPSIGHT_VISION_BIN=eval/.cache/vision_eyes $(PYTHON) eval/run_eval.py --skip-missing
+
+eval-loop: ## Reasoning-loop eval (tier 1; needs DEEPSIGHT_REASONING_API_KEY)
+	$(UV) run python eval/run_loop_eval.py
 
 eval-synth: ## Generate deterministic synthetic test images (needs Xcode)
 	@mkdir -p eval/.cache eval/images/synthetic

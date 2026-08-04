@@ -20,9 +20,15 @@ Checks supported in a manifest entry's ``expected`` block:
     animals_none    bool     no animal labels
     forbidden       [str]    none of these strings appear in the OCR text
 
+Gap semantics: an entry with ``"gap": true`` that fails is reported as a
+known gap (⚠️) and does NOT affect the exit code; a gap entry that passes
+is a gap-closed event (🎉). ``--skip-missing`` marks absent images as
+skipped instead of failed (CI runs where the golden photos are
+local-only).
+
 Usage:
     python eval/run_eval.py [--manifest eval/manifest.json] [--bin PATH]
-                            [--out eval/results]
+                            [--out eval/results] [--skip-missing]
 
 The binary path can also come from $DEEPSIGHT_VISION_BIN (that is what a CI
 macOS job will set).
@@ -112,6 +118,25 @@ def run_eyes(bin_path: str, image_path: str, timeout: float = 120.0) -> tuple[st
 
 def check(entry_id: str, name: str, passed: bool, detail: str = "") -> dict:
     return {"id": entry_id, "check": name, "passed": bool(passed), "detail": detail}
+
+
+def status_for(entry: dict, entry_ok: bool) -> str:
+    """Classify an entry outcome: 'pass', 'gap' (accepted known failure), or 'fail'."""
+    if entry_ok:
+        return "pass"
+    return "gap" if entry.get("gap") else "fail"
+
+
+def exit_code_for(results: list[dict]) -> int:
+    """0 unless any result needs attention: hard errors or non-gap failures.
+
+    Skipped images and accepted gaps never gate the run, so CI and the
+    nightly watch stay green while known limitations are tracked as ⚠️.
+    """
+    for r in results:
+        if r.get("status") in ("fail", "error"):
+            return 1
+    return 0
 
 
 def score(entry_id: str, signals: dict, expected: dict) -> list[dict]:
@@ -214,6 +239,8 @@ def main() -> int:
     ap.add_argument("--manifest", type=Path, default=Path(__file__).parent / "manifest.json")
     ap.add_argument("--bin", default=DEFAULT_BIN)
     ap.add_argument("--out", type=Path, default=Path(__file__).parent / "results")
+    ap.add_argument("--skip-missing", action="store_true",
+                    help="treat missing images as skipped (CI runs without golden photos)")
     args = ap.parse_args()
 
     manifest = load_manifest(args.manifest)
@@ -223,34 +250,34 @@ def main() -> int:
         return 2
 
     results: list[dict] = []
-    failed_entries = 0
     per_signal: dict[str, list[bool]] = {}
 
     for entry in manifest["images"]:
         eid = entry["id"]
         src = entry.get("source", "?")
         path = entry["_resolved"]
+        is_gap = bool(entry.get("gap"))
         if not Path(path).exists():
-            results.append({"id": eid, "source": src, "path": path, "error": "image missing"})
-            failed_entries += 1
+            if args.skip_missing:
+                results.append({"id": eid, "source": src, "path": path, "status": "skipped"})
+                continue
+            results.append({"id": eid, "source": src, "path": path,
+                            "status": "error", "error": "image missing"})
             continue
         try:
             stdout, stderr = run_eyes(bin_path, path)
         except subprocess.TimeoutExpired:
-            results.append({"id": eid, "source": src, "path": path, "error": "timeout"})
-            failed_entries += 1
+            results.append({"id": eid, "source": src, "path": path,
+                            "status": "error", "error": "timeout"})
             continue
         if "loaded" not in stdout and stderr:
             results.append({"id": eid, "source": src, "path": path,
-                            "error": f"binary error: {stderr.strip()[:200]}"})
-            failed_entries += 1
+                            "status": "error", "error": f"binary error: {stderr.strip()[:200]}"})
             continue
         signals = parse_signals(stdout)
         checks = score(eid, signals, entry.get("expected", {}))
         passed = sum(1 for c in checks if c["passed"])
         entry_ok = passed == len(checks) and len(checks) > 0
-        if not entry_ok:
-            failed_entries += 1
         for c in checks:
             per_signal.setdefault(c["check"].split(" ")[0], []).append(c["passed"])
         results.append({
@@ -258,6 +285,8 @@ def main() -> int:
             "source": src,
             "path": path,
             "note": entry.get("note", ""),
+            "gap": is_gap,
+            "status": status_for(entry, entry_ok),
             "ok": entry_ok,
             "checks_passed": passed,
             "checks_total": len(checks),
@@ -268,20 +297,43 @@ def main() -> int:
     # ---- scoreboard ----
     print("\n== eval scoreboard ==")
     for r in results:
+        status = r.get("status")
+        if status == "skipped":
+            print(f"  ⏭️  {r['id']} ({r['source']}) — skipped (image missing)")
+            continue
         if r.get("error"):
             print(f"  ❌ {r['id']} ({r['source']}) — ERROR {r['error']}")
             continue
-        mark = "✅" if r["ok"] else "❌"
-        print(f"  {mark} {r['id']} ({r['source']}) — {r['checks_passed']}/{r['checks_total']}")
+        if status == "pass" and r.get("gap"):
+            print(f"  🎉 {r['id']} ({r['source']}) — GAP CLOSED — "
+                  f"{r['checks_passed']}/{r['checks_total']}")
+        elif status == "pass":
+            print(f"  ✅ {r['id']} ({r['source']}) — {r['checks_passed']}/{r['checks_total']}")
+        elif status == "gap":
+            print(f"  ⚠️ {r['id']} ({r['source']}) — known gap (not counted) — "
+                  f"{r['checks_passed']}/{r['checks_total']}")
+        else:
+            print(f"  ❌ {r['id']} ({r['source']}) — {r['checks_passed']}/{r['checks_total']}")
         for c in r["checks"]:
             if not c["passed"]:
                 print(f"      ✗ {c['check']} — {c['detail']}")
 
     total_checks = sum(r.get("checks_total", 0) for r in results)
     passed_checks = sum(r.get("checks_passed", 0) for r in results)
-    ok_images = sum(1 for r in results if r.get("ok"))
-    print(f"\n  images: {ok_images}/{len(results)} pass  ·  checks: {passed_checks}/{total_checks}"
-          f" ({100.0 * passed_checks / total_checks:.1f}%)" if total_checks else "  no checks ran")
+    ok_images = sum(1 for r in results if r.get("status") == "pass")
+    gap_images = sum(1 for r in results if r.get("status") == "gap")
+    skipped = sum(1 for r in results if r.get("status") == "skipped")
+    headline = f"images: {ok_images}/{len(results)} pass"
+    if gap_images:
+        headline += f" · {gap_images} known gap"
+    if skipped:
+        headline += f" · {skipped} skipped"
+    if total_checks:
+        headline += (f"  ·  checks: {passed_checks}/{total_checks} "
+                     f"({100.0 * passed_checks / total_checks:.1f}%)")
+    else:
+        headline += "  ·  no checks ran"
+    print(f"\n  {headline}")
     if per_signal:
         parts = [f"{k}: {sum(v)}/{len(v)}" for k, v in sorted(per_signal.items())]
         print("  per-signal: " + " · ".join(parts))
@@ -309,13 +361,16 @@ def main() -> int:
         "manifest": str(args.manifest),
         "images_total": len(results),
         "images_ok": ok_images,
+        "gaps_open": gap_images,
+        "skipped": skipped,
         "checks_total": total_checks,
         "checks_passed": passed_checks,
+        "exit_code": exit_code_for(results),
         "results": results,
     }, indent=2))
     print(f"\n  saved: {out_file}")
 
-    return 0 if failed_entries == 0 else 1
+    return exit_code_for(results)
 
 
 if __name__ == "__main__":

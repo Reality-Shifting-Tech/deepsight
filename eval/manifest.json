@@ -1,16 +1,20 @@
 {
-  "description": "DeepSight eyes regression manifest. Golden = user-validated ground truth; synthetic = deterministic; public = Wikimedia Commons, title-anchored (see eval/images/public/.sources.json). Expected fields are anchored to current eyes behavior so regressions fail loudly; known weaknesses are documented in 'note'.",
+  "description": "DeepSight eyes regression manifest. Golden = user-validated ground truth; synthetic = deterministic; public = Wikimedia Commons, title-anchored (see eval/images/public/.sources.json). Expected fields are anchored to current eyes behavior so regressions fail loudly; known weaknesses are documented in 'note'. 'gap': true entries that fail are accepted known gaps (⚠️, non-blocking); passing a gap is a gap-closed event (🎉). 'loop' blocks hold tier-1 reasoning-loop expectations: required = tokens the final description must contain, forbidden = tokens it must not (scored blind, the model never sees this file).",
   "images": [
     {
       "id": "golden-1980-philly",
       "path": "/Users/eliasstevenson/.hermes/cache/images/img_38e2f9b7f1ae.jpg",
       "source": "golden",
-      "note": "1980 Philadelphia four-sport group photo (Erving/McGraw/Jaworski/Peeters). OCR reads SIXERS jersey; sports signals from grid-upscaled crops.",
+      "note": "1980 Philadelphia four-sport group photo (Erving/McGraw/Jaworski/Peeters). OCR reads SIXERS jersey; sports signals from grid-upscaled crops. Tier-1 note: eyes OCR also reads the fragment 'OUISVILLE' (a shirt); the loop must report it as jersey text and NOT claim the group are Louisville fans (old bug: 'Sixers fans in Louisville').",
       "expected": {
         "ocr_contains": ["SIXERS"],
         "scene_top1": "people",
         "sports_present": ["baseball", "ice hockey"],
         "sports_min": 2
+      },
+      "loop": {
+        "required": ["baseball", "hockey"],
+        "forbidden": ["fans in louisville"]
       }
     },
     {
@@ -22,17 +26,25 @@
         "ocr_contains": ["THUNDE"],
         "scene_contains": [{"label": "ballgames", "rank": 3}],
         "sports_present": ["basketball"]
+      },
+      "loop": {
+        "required": ["basketball"],
+        "forbidden": ["football", "hockey", "baseball"]
       }
     },
     {
       "id": "golden-unistellar",
       "path": "/Users/eliasstevenson/.hermes/cache/images/img_e9df15610ee6.jpg",
       "source": "golden",
-      "note": "UNISTELLAR smart-telescope brand photo. KNOWN WEAKNESS: hat -> baseball false positive (0.80) is anchored on purpose; fixing it is a future change that must update this entry.",
+      "note": "UNISTELLAR smart-telescope brand photo. KNOWN WEAKNESS: hat -> baseball false positive (0.80) is anchored on purpose; fixing it is a future change that must update this entry. Loop required baseball documents propagation of that anchored signal.",
       "expected": {
         "ocr_contains": ["UNISTELLAR"],
         "scene_top1": "people",
         "sports_present": ["baseball"]
+      },
+      "loop": {
+        "required": ["baseball"],
+        "forbidden": ["soccer", "football", "hockey"]
       }
     },
     {
@@ -43,6 +55,9 @@
       "expected": {
         "scene_contains": [{"label": "jellyfish", "rank": 3}],
         "humans_zero": true
+      },
+      "loop": {
+        "forbidden": ["baseball", "basketball", "football", "soccer", "hockey", "tennis", "golf", "volleyball", "surfing"]
       }
     },
     {
@@ -54,6 +69,9 @@
         "ocr_empty": true,
         "humans_zero": true,
         "sports_absent": true
+      },
+      "loop": {
+        "forbidden": ["baseball", "basketball", "football", "soccer", "hockey", "tennis", "golf", "volleyball", "surfing"]
       }
     },
     {
@@ -64,6 +82,9 @@
       "expected": {
         "ocr_empty": true,
         "humans_zero": true
+      },
+      "loop": {
+        "forbidden": ["baseball", "basketball", "football", "soccer", "hockey", "tennis", "golf", "volleyball", "surfing"]
       }
     },
     {
@@ -74,6 +95,10 @@
       "expected": {
         "ocr_contains": ["STOP"],
         "humans_zero": true
+      },
+      "loop": {
+        "required": ["stop"],
+        "forbidden": ["baseball", "basketball", "football", "soccer", "hockey", "tennis"]
       }
     },
     {
@@ -84,6 +109,10 @@
       "expected": {
         "ocr_contains": ["DeepSight"],
         "humans_zero": true
+      },
+      "loop": {
+        "required": ["deepsight"],
+        "forbidden": ["baseball", "basketball", "football", "soccer", "hockey", "tennis"]
       }
     },
     {
@@ -94,16 +123,23 @@
       "expected": {
         "rectangles_min": 1,
         "ocr_empty": true
+      },
+      "loop": {
+        "forbidden": ["baseball", "basketball", "football", "soccer", "hockey", "tennis"]
       }
     },
     {
       "id": "public-baseball",
       "path": "images/public/baseball.jpg",
       "source": "public",
-      "note": "Commons 'Pitcher (PSF).png' — public-domain line drawing of a pitcher. Weak sports signal (0.11) barely clears the 0.10 floor; drawing detection is part of the test.",
+      "note": "Commons 'Pitcher (PSF).png' — public-domain line drawing of a pitcher. Weak sports signal (0.11) barely clears the 0.10 floor; drawing detection is part of the test. Tier-1 anchor: the blind loop has suppressed this weak signal once ('no athletics shown, just an illustration') — tracked so a prompt/eyes change that recovers it is measurable.",
       "expected": {
         "sports_present": ["baseball"],
         "scene_contains": [{"label": "illustrations", "rank": 3}]
+      },
+      "loop": {
+        "required": ["baseball"],
+        "forbidden": ["hockey", "soccer", "football"]
       }
     },
     {
@@ -114,17 +150,25 @@
       "expected": {
         "ocr_contains": ["NCAA"],
         "sports_present": ["ice hockey"]
+      },
+      "loop": {
+        "required": ["hockey"],
+        "forbidden": ["soccer", "baseball"]
       }
     },
     {
       "id": "public-tennis",
       "path": "images/public/tennis.jpg",
       "source": "public",
-      "note": "Commons 'Margaret Court 1964' — vintage B&W tennis photo. KNOWN GAP: racket identifier did not fire; tennis absent from sports line. Anchored to title truth so the fix is measurable.",
+      "note": "Commons 'Margaret Court 1964' — vintage B&W tennis photo. KNOWN GAP: racket identifier did not fire; tennis absent from sports line. Anchored to title truth so the fix is measurable. Loop gap: blind model cannot know the sport with zero eyes evidence.",
       "expected": {
         "sports_present": ["tennis"],
         "faces_min": 1
-      }
+      },
+      "loop": {
+        "required": ["tennis"]
+      },
+      "gap": true
     },
     {
       "id": "public-surfing",
@@ -134,17 +178,26 @@
       "expected": {
         "scene_contains": [{"label": "surfing", "rank": 5}],
         "sports_present": ["sports equipment"]
+      },
+      "loop": {
+        "required": ["surfing"],
+        "forbidden": ["hockey", "football"]
       }
     },
     {
       "id": "public-soccer",
       "path": "images/public/soccer.jpg",
       "source": "public",
-      "note": "Commons 'Championship-Soccer-Stadium-SW-View-2024'. KNOWN FALSE POSITIVE: stadium triggers 'arena' -> ice hockey(0.85). Title truth is soccer. Anchored so the map fix is measurable.",
+      "note": "Commons 'Championship-Soccer-Stadium-SW-View-2024'. EYES FIXED 2026-08: dropped 'arena' -> ice hockey over-mapping (was ice hockey(0.85) false positive) and mapped the literal 'soccer' label (0.17). Eyes now passes; gap:true remains because the REASONING LOOP can still override the weak soccer signal with 'arena' world knowledge and say ice hockey (tier-1 propagation anchor).",
       "expected": {
         "sports_present": ["soccer"],
         "scene_contains": [{"label": "structure", "rank": 5}]
-      }
+      },
+      "loop": {
+        "required": ["soccer"],
+        "forbidden": ["ice hockey"]
+      },
+      "gap": true
     },
     {
       "id": "public-stop-sign",
@@ -155,6 +208,10 @@
         "ocr_contains": ["STOP", "ONCOMING TRAFFIC"],
         "scene_contains": [{"label": "street_sign", "rank": 3}],
         "rectangles_min": 1
+      },
+      "loop": {
+        "required": ["stop"],
+        "forbidden": ["baseball", "basketball", "football", "soccer", "hockey", "tennis"]
       }
     },
     {
@@ -164,6 +221,9 @@
       "note": "Commons 'Tour Eiffel Wikimedia Commons'. KNOWN GAP: tower too small in frame, scene reads outdoor/sky/grass — no tower label. Anchored to what is true AND emitted.",
       "expected": {
         "scene_contains": [{"label": "outdoor", "rank": 3}]
+      },
+      "loop": {
+        "forbidden": ["baseball", "basketball", "football", "soccer", "hockey", "tennis", "golf", "volleyball", "surfing"]
       }
     },
     {
@@ -174,6 +234,10 @@
       "expected": {
         "ocr_contains": ["PIZZA"],
         "sports_absent": true
+      },
+      "loop": {
+        "required": ["pizza"],
+        "forbidden": ["baseball", "basketball", "football", "soccer", "hockey", "tennis"]
       }
     },
     {
@@ -185,6 +249,10 @@
         "scene_contains": [{"label": "leopard", "rank": 3}],
         "sports_absent": true,
         "humans_zero": true
+      },
+      "loop": {
+        "required": ["leopard"],
+        "forbidden": ["baseball", "basketball", "football", "soccer", "hockey", "tennis"]
       }
     },
     {
@@ -194,6 +262,9 @@
       "note": "Commons Central Park NYC cropped — bridge scene.",
       "expected": {
         "scene_contains": [{"label": "bridge", "rank": 3}]
+      },
+      "loop": {
+        "forbidden": ["baseball", "basketball", "football", "soccer", "hockey", "tennis", "golf", "volleyball", "surfing"]
       }
     }
   ]

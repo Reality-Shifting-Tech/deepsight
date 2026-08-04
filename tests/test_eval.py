@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from typing import Any
 
 RUNNER = Path(__file__).resolve().parent.parent / "eval" / "run_eval.py"
 spec = importlib.util.spec_from_file_location("run_eval", RUNNER)
@@ -130,3 +131,58 @@ def test_manifest_schema_well_formed() -> None:
         assert entry["id"], "every entry needs an id"
         assert entry["_resolved"], f"{entry['id']}: path did not resolve"
         assert entry.get("expected"), f"{entry['id']}: no expected block"
+
+
+# ---------------------------------------------------------------------------
+# Gap semantics (tier 0 runner)
+# ---------------------------------------------------------------------------
+
+
+def test_status_for() -> None:
+    assert run_eval.status_for({}, True) == "pass"
+    assert run_eval.status_for({}, False) == "fail"
+    assert run_eval.status_for({"gap": True}, False) == "gap"
+    assert run_eval.status_for({"gap": True}, True) == "pass"
+
+
+def test_exit_code_for() -> None:
+    assert run_eval.exit_code_for([]) == 0
+    assert run_eval.exit_code_for(
+        [{"status": "pass"}, {"status": "gap"}, {"status": "skipped"}]
+    ) == 0
+    assert run_eval.exit_code_for([{"status": "fail"}]) == 1
+    assert run_eval.exit_code_for([{"status": "error", "error": "timeout"}]) == 1
+
+
+# ---------------------------------------------------------------------------
+# Tier 1 reasoning-loop scorer
+# ---------------------------------------------------------------------------
+
+LOOP_RUNNER = Path(__file__).resolve().parent.parent / "eval" / "run_loop_eval.py"
+
+
+def load_run_loop_eval() -> Any:
+    spec = importlib.util.spec_from_file_location("run_loop_eval_shared", LOOP_RUNNER)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_loop_score_required_forbidden() -> None:
+    loop_mod = load_run_loop_eval()
+    ok = loop_mod.score_loop("t", "A soccer stadium on a sunny afternoon",
+                             {"required": ["soccer"], "forbidden": ["hockey"]})
+    assert ok[0]["passed"] and ok[1]["passed"]
+    bad = loop_mod.score_loop("t", "An ice hockey arena full of fans",
+                              {"required": ["soccer"], "forbidden": ["hockey"]})
+    assert not bad[0]["passed"] and not bad[1]["passed"]
+
+
+def test_loop_score_normalization() -> None:
+    loop_mod = load_run_loop_eval()
+    normed = loop_mod.score_loop("t", "STOP! Deep-Sight 50% OFF",
+                                 {"required": ["deep sight", "stop"], "forbidden": ["soccer"]})
+    assert all(c["passed"] for c in normed)
+    empty = loop_mod.score_loop("t", "nothing here", {"required": []})
+    assert empty == []
