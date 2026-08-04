@@ -40,7 +40,7 @@ import json
 import random
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from PIL import Image, ImageDraw, ImageEnhance, ImageFont
 
@@ -79,15 +79,18 @@ TEXT_TRUTH: dict[str, list[str]] = {
 }
 
 
-def load_font(size: int) -> ImageFont.FreeTypeFont:
+def load_font(size: int) -> ImageFont.ImageFont:
+    # Menlo Bold is the macOS-system font the text fixtures were probed
+    # with. CI (ubuntu) lacks it: fall back to Pillow's bundled scalable
+    # default font so the generator stays cross-platform and deterministic.
     for path in FONT_CANDIDATES:
         if Path(path).exists():
-            return ImageFont.truetype(path, size, index=1)  # Menlo Bold
-    raise FileNotFoundError("no Menlo font found")
+            return cast(ImageFont.ImageFont, ImageFont.truetype(path, size, index=1))
+    return cast(ImageFont.ImageFont, ImageFont.load_default(size=size))
 
 
 def _draw_text_center(
-    d: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, fill: RGB
+    d: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, fill: RGB
 ) -> None:
     bbox = d.textbbox((0, 0), text, font=font)
     w = bbox[2] - bbox[0]
