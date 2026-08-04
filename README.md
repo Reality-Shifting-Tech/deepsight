@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" alt="DeepSight" width="120" />
+</p>
+
 # DeepSight
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
