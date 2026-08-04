@@ -14,10 +14,10 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from .backends import OllamaVisionBackend, OpenAICompatibleVisionBackend
+from .backends import NativeVisionBackend, OllamaVisionBackend, OpenAICompatibleVisionBackend
 from .cache import PerceptionCache
 
-VisionBackendType = OllamaVisionBackend | OpenAICompatibleVisionBackend
+VisionBackendType = OllamaVisionBackend | OpenAICompatibleVisionBackend | NativeVisionBackend
 
 SKETCH_PROMPT = (
     "You are the perception module of a vision proxy. Analyze the image and "

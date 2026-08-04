@@ -28,6 +28,7 @@ import httpx
 from PIL import Image
 
 from .backends import (
+    NativeVisionBackend,
     OllamaVisionBackend,
     OpenAICompatibleVisionBackend,
     ReasoningBackend,
@@ -35,7 +36,7 @@ from .backends import (
 from .cache import PerceptionCache
 from .perception import TOOL_DEFINITIONS, Perception
 
-VisionBackendType = OllamaVisionBackend | OpenAICompatibleVisionBackend
+VisionBackendType = OllamaVisionBackend | OpenAICompatibleVisionBackend | NativeVisionBackend
 
 SYSTEM_PROMPT = (
     "You are DeepSight, an AI with interactive vision. You can inspect images by calling tools.\n\n"
