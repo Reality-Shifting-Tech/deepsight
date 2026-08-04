@@ -43,14 +43,8 @@ eval-eyes-ci: build-eyes eval-synth eval-fetch ## CI variant: compiled-from-sour
 eval-loop: ## Reasoning-loop eval (tier 1; needs DEEPSIGHT_REASONING_API_KEY)
 	$(UV) run python eval/run_loop_eval.py
 
-eval-synth: ## Generate deterministic synthetic test images (needs Xcode)
-	@mkdir -p eval/.cache eval/images/synthetic
-	env SDKROOT=$(shell xcode-select -p)/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk swiftc -target arm64-apple-macos14 eval/make_synthetic.swift -o eval/.cache/make_synthetic
-	eval/.cache/make_synthetic eval/images/synthetic/solid-red.png solid "#C0392B" "#FFFFFF"
-	eval/.cache/make_synthetic eval/images/synthetic/solid-blue.png solid "#1F618D" "#FFFFFF"
-	eval/.cache/make_synthetic eval/images/synthetic/text-stop.png textcard "#C0392B" "#FFFFFF" "STOP"
-	eval/.cache/make_synthetic eval/images/synthetic/text-card.png textcard "#FFFFFF" "#000000" "DeepSight test card" "SALE 50% OFF"
-	eval/.cache/make_synthetic eval/images/synthetic/rect.png rect "#FFFFFF" "#000000"
+eval-synth: ## Regenerate deterministic synthetic eval images (zero network)
+	$(UV) run python eval/gen_synthetic.py
 
 eval-fetch: ## Download public test images from Wikimedia Commons
 	$(PYTHON) eval/fetch_public.py

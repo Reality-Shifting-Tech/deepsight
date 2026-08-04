@@ -20,11 +20,18 @@ Checks supported in a manifest entry's ``expected`` block:
     animals_none    bool     no animal labels
     forbidden       [str]    none of these strings appear in the OCR text
 
-Gap semantics: an entry with ``"gap": true`` that fails is reported as a
+Gap semantics: an entry with "gap": true that fails is reported as a
 known gap (⚠️) and does NOT affect the exit code; a gap entry that passes
-is a gap-closed event (🎉). ``--skip-missing`` marks absent images as
+is a gap-closed event (🎉). "--skip-missing" marks absent images as
 skipped instead of failed (CI runs where the golden photos are
-local-only).
+local-only). An entry with an empty "expected" block is a smoke test: it
+passes as long as the binary runs and its output parses (used by the
+seeded fuzz images from eval/gen_synthetic.py).
+
+The synthetic section is generated, not hand-maintained: when
+eval/images/synthetic/manifest.json exists, its entries (source ==
+"synthetic") replace any synthetic entries in the main manifest at load
+time.
 
 Usage:
     python eval/run_eval.py [--manifest eval/manifest.json] [--bin PATH]
@@ -226,6 +233,12 @@ def score(entry_id: str, signals: dict, expected: dict) -> list[dict]:
 def load_manifest(path: Path) -> dict:
     data = json.loads(path.read_text())
     base = path.resolve().parent
+    synth_manifest = base / "images" / "synthetic" / "manifest.json"
+    if synth_manifest.exists():
+        extra = json.loads(synth_manifest.read_text())
+        data["images"] = [
+            e for e in data["images"] if e.get("source") != "synthetic"
+        ] + extra.get("images", [])
     for entry in data["images"]:
         p = Path(entry["path"])
         if not p.is_absolute():
@@ -277,7 +290,7 @@ def main() -> int:
         signals = parse_signals(stdout)
         checks = score(eid, signals, entry.get("expected", {}))
         passed = sum(1 for c in checks if c["passed"])
-        entry_ok = passed == len(checks) and len(checks) > 0
+        entry_ok = len(checks) == 0 or passed == len(checks)
         for c in checks:
             per_signal.setdefault(c["check"].split(" ")[0], []).append(c["passed"])
         results.append({

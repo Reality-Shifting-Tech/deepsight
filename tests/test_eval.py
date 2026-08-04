@@ -122,15 +122,20 @@ def test_score_forbidden() -> None:
 
 
 def test_manifest_schema_well_formed() -> None:
-    """Every manifest entry must resolve to an existing relative/absolute path
-    and carry at least one expectation, so the eval can never silently skip."""
+    """Every manifest entry must resolve to a path and carry an expected
+    block (possibly empty: synthetic fuzz entries are smoke tests that only
+    assert the binary runs), so the eval can never silently skip."""
     manifest_path = Path(__file__).resolve().parent.parent / "eval" / "manifest.json"
     manifest = run_eval.load_manifest(manifest_path)
     assert len(manifest["images"]) >= 10
     for entry in manifest["images"]:
         assert entry["id"], "every entry needs an id"
         assert entry["_resolved"], f"{entry['id']}: path did not resolve"
-        assert entry.get("expected"), f"{entry['id']}: no expected block"
+        expected = entry.get("expected")
+        assert isinstance(expected, dict), f"{entry['id']}: expected must be a dict"
+        assert expected or entry.get("source") == "synthetic", (
+            f"{entry['id']}: empty expected allowed only for synthetic smoke entries"
+        )
 
 
 # ---------------------------------------------------------------------------
