@@ -29,7 +29,7 @@ from PIL import Image
 
 from .backends import ComputerUseBackend, NativeVisionBackend, ReasoningBackend, SearchBackend
 from .cache import PerceptionCache
-from .perception import TOOL_DEFINITIONS, ToolDefinition, Perception
+from .perception import TOOL_DEFINITIONS, Perception, ToolDefinition
 
 ACTION_TOOL_DEFINITIONS = [
     ToolDefinition(

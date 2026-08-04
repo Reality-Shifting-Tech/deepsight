@@ -122,7 +122,7 @@ def test_cache_hits_reduce_vision_calls(fake_reasoning, fake_vision, png_data_ur
 
 def test_tool_defs_includes_action_tools():
     """_tool_defs() returns both vision tools and computer-use tools."""
-    from deepsight.orchestrator import _tool_defs, ACTION_TOOL_DEFINITIONS
+    from deepsight.orchestrator import ACTION_TOOL_DEFINITIONS, _tool_defs
 
     defs = _tool_defs()
     names = {d["function"]["name"] for d in defs}

@@ -15,6 +15,7 @@ automation and coordinate-aware agent actions.
 
 from __future__ import annotations
 
+import contextlib
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -170,7 +171,8 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
             "properties": {
                 "what": {
                     "type": "string",
-                    "description": "description of the object to locate, e.g. 'a person', 'the main heading text', 'a cat'",
+                    "description": "description of the object to locate, "
+                                   "e.g. 'a person', 'the main heading text', 'a cat'",
                 },
                 "x": {
                     "type": "number",
@@ -235,7 +237,10 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
             "properties": {
                 "region": {
                     "type": "string",
-                    "description": "optional region: 'screen' (full display, default), or a window title substring to capture a specific window",
+                    "description": (
+                        "optional region: 'screen' (full display, default), "
+                        "or a window title substring to capture a specific window"
+                    ),
                 },
             },
             "required": [],
@@ -265,7 +270,8 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
                 },
                 "until": {
                     "type": "string",
-                    "description": "optional: stop early when this text appears on screen (substring match on OCR)",
+                    "description": "optional: stop early when this text "
+                                   "appears on screen (substring match on OCR)",
                 },
             },
             "required": [],
@@ -446,7 +452,7 @@ class Perception:
 
         scored.sort(key=lambda x: (-x[0], -x[1].get("confidence", 0)))
         lines: list[str] = []
-        for score, box in scored:
+        for _score, box in scored:
             pct_x = box["x"] * 100
             pct_y = box["y"] * 100
             pct_w = box["w"] * 100
@@ -496,8 +502,15 @@ class Perception:
                     lines.append(f"  page content ({len(content)} chars, first 600):")
                     lines.append(f"    {content[:600].strip()}")
             lines.append("")
-        lines.append(f"fetched {len(results)} result(s). "
-                     f"Top page body: {'available' if results and self.search_backend.fetch(results[0].url) else 'not fetched (error or unavailable)'}.")
+        body_status = (
+            "available"
+            if results and self.search_backend.fetch(results[0].url)
+            else "not fetched (error or unavailable)"
+        )
+        lines.append(
+            f"fetched {len(results)} result(s). "
+            f"Top page body: {body_status}."
+        )
         return "\n".join(lines)
 
     @staticmethod
@@ -568,8 +581,9 @@ class Perception:
             if not os.path.getsize(tmp_path):
                 return "capture: screenshot produced an empty image"
 
-            from PIL import Image
             import io
+
+            from PIL import Image
 
             img = Image.open(tmp_path).convert("RGB")
             self._captured_image = img
@@ -622,10 +636,8 @@ class Perception:
 
             return "\n".join(parts) or "capture: screen captured but no content detected"
         finally:
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(tmp_path)
-            except OSError:
-                pass
 
     def _watch(self, args: dict[str, Any]) -> str:
         """Execute the ``watch`` tool: capture N frames over time, report changes."""
@@ -660,8 +672,9 @@ class Perception:
                 if not _os.path.getsize(tmp):
                     continue
 
-                from PIL import Image as _PImage
                 import io as _io
+
+                from PIL import Image as _PImage
 
                 frame = _PImage.open(tmp).convert("RGB")
                 cur_hash = self._dhash(frame)
@@ -690,10 +703,8 @@ class Perception:
                     found_until = True
                     break
             finally:
-                try:
+                with contextlib.suppress(OSError):
                     _os.unlink(tmp)
-                except OSError:
-                    pass
 
             # Sleep until next capture (respect deadline)
             remaining = deadline - time.monotonic()

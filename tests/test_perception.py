@@ -102,12 +102,46 @@ def test_locate_no_detections(fake_vision, image):
 
 
 def test_locate_matches_text(fake_vision, image):
-    vision = fake_vision(boxes_data=[
-        {"type": "text", "confidence": 1.0, "x": 0.05, "y": 0.08, "w": 0.12, "h": 0.04, "label": "WEBSITES"},
-        {"type": "text", "confidence": 1.0, "x": 0.54, "y": 0.50, "w": 0.14, "h": 0.08, "label": "$5,149"},
-        {"type": "face", "confidence": 0.99, "x": 0.10, "y": 0.20, "w": 0.30, "h": 0.40, "label": "face"},
-        {"type": "human", "confidence": 0.85, "x": 0.05, "y": 0.10, "w": 0.15, "h": 0.60, "label": "human"},
-    ])
+    vision = fake_vision(
+        boxes_data=[
+            {
+                "type": "text",
+                "confidence": 1.0,
+                "x": 0.05,
+                "y": 0.08,
+                "w": 0.12,
+                "h": 0.04,
+                "label": "WEBSITES",
+            },
+            {
+                "type": "text",
+                "confidence": 1.0,
+                "x": 0.54,
+                "y": 0.50,
+                "w": 0.14,
+                "h": 0.08,
+                "label": "$5,149",
+            },
+            {
+                "type": "face",
+                "confidence": 0.99,
+                "x": 0.10,
+                "y": 0.20,
+                "w": 0.30,
+                "h": 0.40,
+                "label": "face",
+            },
+            {
+                "type": "human",
+                "confidence": 0.85,
+                "x": 0.05,
+                "y": 0.10,
+                "w": 0.15,
+                "h": 0.60,
+                "label": "human",
+            },
+        ]
+    )
     perc = Perception(vision)
     out = perc.execute("locate", {"what": "WEBSITES"}, image)
     assert "WEBSITES" in out
@@ -117,10 +151,28 @@ def test_locate_matches_text(fake_vision, image):
 
 
 def test_locate_person_matches_human_and_face(fake_vision, image):
-    vision = fake_vision(boxes_data=[
-        {"type": "human", "confidence": 0.85, "x": 0.05, "y": 0.10, "w": 0.15, "h": 0.60, "label": "human"},
-        {"type": "face", "confidence": 0.99, "x": 0.10, "y": 0.20, "w": 0.30, "h": 0.40, "label": "face"},
-    ])
+    vision = fake_vision(
+        boxes_data=[
+            {
+                "type": "human",
+                "confidence": 0.85,
+                "x": 0.05,
+                "y": 0.10,
+                "w": 0.15,
+                "h": 0.60,
+                "label": "human",
+            },
+            {
+                "type": "face",
+                "confidence": 0.99,
+                "x": 0.10,
+                "y": 0.20,
+                "w": 0.30,
+                "h": 0.40,
+                "label": "face",
+            },
+        ]
+    )
     perc = Perception(vision)
     out = perc.execute("locate", {"what": "person"}, image)
     assert "human" in out or "face" in out
@@ -128,9 +180,19 @@ def test_locate_person_matches_human_and_face(fake_vision, image):
 
 
 def test_locate_unmatched_returns_available_types(fake_vision, image):
-    vision = fake_vision(boxes_data=[
-        {"type": "text", "confidence": 1.0, "x": 0.0, "y": 0.0, "w": 0.5, "h": 0.1, "label": "hello"},
-    ])
+    vision = fake_vision(
+        boxes_data=[
+            {
+                "type": "text",
+                "confidence": 1.0,
+                "x": 0.0,
+                "y": 0.0,
+                "w": 0.5,
+                "h": 0.1,
+                "label": "hello",
+            },
+        ]
+    )
     perc = Perception(vision)
     out = perc.execute("locate", {"what": "gorilla"}, image)
     assert "no match" in out
@@ -138,9 +200,19 @@ def test_locate_unmatched_returns_available_types(fake_vision, image):
 
 
 def test_locate_calls_boxes_method(fake_vision, image):
-    vision = fake_vision(boxes_data=[
-        {"type": "text", "confidence": 1.0, "x": 0.0, "y": 0.0, "w": 0.5, "h": 0.1, "label": "hello"},
-    ])
+    vision = fake_vision(
+        boxes_data=[
+            {
+                "type": "text",
+                "confidence": 1.0,
+                "x": 0.0,
+                "y": 0.0,
+                "w": 0.5,
+                "h": 0.1,
+                "label": "hello",
+            },
+        ]
+    )
     perc = Perception(vision)
     perc.execute("locate", {"what": "hello"}, image)
     assert vision.box_calls == 1
@@ -170,11 +242,10 @@ def test_ground_no_results(fake_search, fake_vision, image):
 
 def test_ground_results_and_fetch(fake_search, fake_vision, image):
     from deepsight.backends import SearchResult
+
     sr = [
-        SearchResult(url="https://example.com/1", title="First Result",
-                     snippet="Snippet one"),
-        SearchResult(url="https://example.com/2", title="Second Result",
-                     snippet="Snippet two"),
+        SearchResult(url="https://example.com/1", title="First Result", snippet="Snippet one"),
+        SearchResult(url="https://example.com/2", title="Second Result", snippet="Snippet two"),
     ]
     sb = fake_search(results=sr, fetch_text="Page body content here...")
     perc = Perception(fake_vision(), search_backend=sb)
@@ -188,6 +259,7 @@ def test_ground_results_and_fetch(fake_search, fake_vision, image):
 
 def test_ground_custom_query(fake_search, fake_vision, image):
     from deepsight.backends import SearchResult
+
     sr = [SearchResult(url="https://x.com", title="X", snippet="snippet")]
     sb = fake_search(results=sr)
     perc = Perception(fake_vision(), search_backend=sb)
@@ -206,8 +278,6 @@ def test_capture_non_macos(fake_vision, image, monkeypatch):
 def test_capture_sets_captured_image(fake_vision, image, monkeypatch):
     """Capture stores a PIL Image that subsequent tools use."""
     import subprocess
-    import tempfile
-    import os
 
     monkeypatch.setattr("sys.platform", "darwin")
 
@@ -222,13 +292,16 @@ def test_capture_sets_captured_image(fake_vision, image, monkeypatch):
                 f.write(image.fp.read() if hasattr(image, "fp") else b"")
                 # Fallback: use png_bytes fixture via import
             # Re-create the test PNG
-            from PIL import Image as PImage
             import io
+
+            from PIL import Image as PImage
+
             buf = io.BytesIO()
             PImage.new("RGB", (32, 32), (100, 150, 200)).save(buf, format="PNG")
             with open(out_path, "wb") as f:
                 f.write(buf.getvalue())
             from unittest.mock import MagicMock
+
             return MagicMock(returncode=0, stdout=b"", stderr=b"")
         return real_run(cmd, **kw)
 
@@ -236,7 +309,9 @@ def test_capture_sets_captured_image(fake_vision, image, monkeypatch):
 
     vision = fake_vision(text='{"objects": ["test"]}')
     # Set up boxes data to avoid real subprocess call
-    vision.boxes_data = [{"type": "text", "confidence": 1.0, "x": 0, "y": 0, "w": 0.5, "h": 0.1, "label": "test"}]
+    vision.boxes_data = [
+        {"type": "text", "confidence": 1.0, "x": 0, "y": 0, "w": 0.5, "h": 0.1, "label": "test"}
+    ]
 
     perc = Perception(vision)
     out = perc.execute("capture", {}, image)
@@ -247,9 +322,10 @@ def test_capture_sets_captured_image(fake_vision, image, monkeypatch):
 
 def test_capture_then_look_uses_captured(fake_vision, monkeypatch):
     """After capture, look/ocr/zoom/count/etc operate on the captured image."""
-    import subprocess
-    from PIL import Image as PImage
     import io
+    import subprocess
+
+    from PIL import Image as PImage
 
     monkeypatch.setattr("sys.platform", "darwin")
     real_run = subprocess.run
@@ -262,15 +338,27 @@ def test_capture_then_look_uses_captured(fake_vision, monkeypatch):
             with open(out_path, "wb") as f:
                 f.write(buf.getvalue())
             from unittest.mock import MagicMock
+
             return MagicMock(returncode=0, stdout=b"", stderr=b"")
         return real_run(cmd, **kw)
 
     monkeypatch.setattr(subprocess, "run", fake_run)
 
     # Fake the ask() method — it answers questions about the captured image
-    vision = fake_vision(text="captured desk", boxes_data=[
-        {"type": "text", "confidence": 1.0, "x": 0, "y": 0, "w": 0.1, "h": 0.05, "label": "game"}
-    ])
+    vision = fake_vision(
+        text="captured desk",
+        boxes_data=[
+            {
+                "type": "text",
+                "confidence": 1.0,
+                "x": 0,
+                "y": 0,
+                "w": 0.1,
+                "h": 0.05,
+                "label": "game",
+            }
+        ],
+    )
     perc = Perception(vision)
 
     # capture
