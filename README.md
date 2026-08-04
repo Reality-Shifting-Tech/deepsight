@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](pyproject.toml)
 [![CI](https://github.com/Reality-Shifting-Tech/deepsight/actions/workflows/eval.yml/badge.svg)](https://github.com/Reality-Shifting-Tech/deepsight/actions/workflows/eval.yml)
 
-> **Turn any text-only LLM into a multimodal desktop agent.** DeepSight gives a reasoning model (DeepSeek, OpenAI, or any OpenAI-compatible backend) interactive vision and desktop control — all on-device, zero tokens for vision, no GPU required.
+> **Give DeepSeek (or any text-only model) eyes and hands.** DeepSight connects your existing LLM setup to the real world — it can look at images you send, take screenshots of your desktop, read text on screen, click buttons, type into fields, open apps, and search the web to verify facts. All vision runs on-device through Apple Vision: zero tokens, zero GPU, no image data ever leaves your machine.
 
 ![DeepSight architecture](docs/images/architecture.svg)
 
@@ -145,8 +145,6 @@ print(result.content)
 ---
 
 ## Architecture
-
-![Architecture](docs/images/architecture.svg)
 
 1. **Reasoning model** receives the user's request plus tool definitions for all 16 tools.
 2. **Vision tools** (look, ocr, zoom, count, locate) route through the `Perception` module, which shells `vision_eyes` — the compiled Apple Vision binary — for zero-token analysis.
