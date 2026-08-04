@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     reasoning_model: str = "deepseek-v4-flash"
     reasoning_temperature: float = 0.2
     reasoning_max_tokens: int = 1024
-    reasoning_tool_round_max_tokens: int = 256
+    reasoning_tool_round_max_tokens: int = 1024
 
     # --- vision-session loop ---
     max_look_rounds: int = 5

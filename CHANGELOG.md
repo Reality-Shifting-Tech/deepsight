@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Reasoning-model tool rounds no longer truncate.** `tool_round_max_tokens`
+  (orchestrator) and `DEEPSIGHT_REASONING_TOOL_ROUND_MAX_TOKENS` (settings)
+  both default to 1024 instead of 128/256. Reasoning models like
+  `deepseek-v4-flash` consume thinking tokens inside the same generation
+  budget; the old caps truncated the model mid-thought before it could emit a
+  tool call, forcing repeated "widening output budget" retries and
+  look-rounds that never answered.
+
 ### Changed
 
 - **Natural conversational answers.** The vision-session loop no longer forces

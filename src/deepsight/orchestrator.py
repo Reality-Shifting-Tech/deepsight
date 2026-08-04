@@ -140,7 +140,7 @@ class Orchestrator:
         cache: PerceptionCache | None = None,
         max_look_rounds: int = 5,
         sketch_enabled: bool = True,
-        tool_round_max_tokens: int = 128,
+        tool_round_max_tokens: int = 1024,
         final_max_tokens: int | None = None,
         vision_tool_max_tokens: int = 64,
     ) -> None:
