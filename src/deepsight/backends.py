@@ -477,6 +477,14 @@ class ComputerUseBackend:
             return self._key(args)
         if name == "scroll":
             return self._scroll(args)
+        if name == "open":
+            return self._open(args)
+        if name == "focus":
+            return self._focus(args)
+        if name == "apps":
+            return self._apps(args)
+        if name == "window":
+            return self._window(args)
         return f"unknown action: {name}"
 
     def _click(self, args: dict[str, Any]) -> str:
@@ -587,3 +595,120 @@ class ComputerUseBackend:
                 capture_output=True, timeout=30,
             )
         return f"scrolled {direction} {clicks} clicks"
+
+    def _run_osa(self, script: str) -> tuple[int, str]:
+        """Run an osascript one-liner, return (exit_code, stdout)."""
+        r = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True, text=True, timeout=15,
+        )
+        return (r.returncode, r.stdout.strip())
+
+    def _open(self, args: dict[str, Any]) -> str:
+        """Launch or activate an application by name."""
+        name = str(args.get("name", "")).strip()
+        if not name:
+            return "open: no app name provided"
+        try:
+            subprocess.run(
+                ["open", "-a", name],
+                capture_output=True, timeout=15,
+            )
+            return f"opened {name}"
+        except subprocess.TimeoutExpired:
+            return f"open: timed out launching {name}"
+
+    def _focus(self, args: dict[str, Any]) -> str:
+        """Focus a window whose title contains the given substring."""
+        title = str(args.get("window", "")).strip()
+        if not title:
+            return "focus: no window title provided"
+        # Find the app owning the first matching window and activate it
+        rc, out = self._run_osa(
+            f'tell application "System Events"\n'
+            f'  set matches to every window whose title contains "{title}"\n'
+            f'  if (count of matches) > 0 then\n'
+            f'    set win to item 1 of matches\n'
+            f'    set appName to name of first process whose every window contains win\n'
+            f'    tell application appName to activate\n'
+            f'    return appName & ": " & name of win\n'
+            f'  end if\n'
+            f'  return "not found"\n'
+            f'end tell'
+        )
+        if rc != 0 or "not found" in out:
+            return f"focus: no window matching '{title}' found"
+        return f"focused: {out}"
+
+    def _apps(self, args: dict[str, Any]) -> str:
+        """List running applications with their window titles."""
+        rc, out = self._run_osa(
+            'set lines to {}\n'
+            'tell application "System Events"\n'
+            '  set procs to every process whose background only is false\n'
+            '  repeat with p in procs\n'
+            '    set pname to name of p\n'
+            '    set ws to every window of p\n'
+            '    set end of lines to pname & " (" & (count of ws) & " windows)"\n'
+            '    repeat with w in ws\n'
+            '      set end of lines to "  - " & name of w\n'
+            '    end repeat\n'
+            '  end repeat\n'
+            'end tell\n'
+            'return lines as text'
+        )
+        if rc != 0:
+            return "apps: could not retrieve app list"
+        lines = [ln for ln in out.split("\n") if ln.strip()]
+        if not lines:
+            return "apps: no visible applications found"
+        return "running applications:\n" + "\n".join(lines[:30])
+
+    def _window(self, args: dict[str, Any]) -> str:
+        """Resize or move a window. x/y/w/h in screen % coords."""
+        name = str(args.get("name", "")).strip() or None
+        has_x = "x" in args
+        has_y = "y" in args
+        has_w = "w" in args or "width" in args
+        has_h = "h" in args or "height" in args
+
+        if not (has_x or has_y or has_w or has_h):
+            return "window: specify at least one of x, y, w, h"
+
+        screen_w, screen_h = self._screen_size
+
+        def pct(v: float, total: int) -> int:
+            return int(v / 100 * total)
+
+        tgt_line = (
+            f'set tgt to first window whose title contains "{name}"'
+            if name else
+            'set tgt to window 1 of first process whose background only is false'
+        )
+        x_line = f"set bx to {pct(float(args['x']), screen_w)}" if has_x else ""
+        y_line = f"set by to {pct(float(args['y']), screen_h)}" if has_y else ""
+        w_val = args.get("w", args.get("width", 0))
+        h_val = args.get("h", args.get("height", 0))
+        w_line = f"set bw to {pct(float(w_val), screen_w)}" if has_w else ""
+        h_line = f"set bh to {pct(float(h_val), screen_h)}" if has_h else ""
+
+        script = (
+            'tell application "System Events"\n'
+            f'  {tgt_line}\n'
+            '  set b to bounds of tgt\n'
+            '  set bx to item 1 of b\n'
+            '  set by to item 2 of b\n'
+            '  set bw to item 3 of b\n'
+            '  set bh to item 4 of b\n'
+            + (f"  {x_line}\n" if x_line else "")
+            + (f"  {y_line}\n" if y_line else "")
+            + (f"  {w_line}\n" if w_line else "")
+            + (f"  {h_line}\n" if h_line else "")
+            + '  set bounds of tgt to {bx, by, bx + bw, by + bh}\n'
+            + '  return "window: " & bx & "," & by & " " & bw & "x" & bh\n'
+            + "end tell"
+        )
+        rc, out = self._run_osa(script)
+        if rc != 0:
+            return f"window: failed to resize — {out[:100]}"
+        return out

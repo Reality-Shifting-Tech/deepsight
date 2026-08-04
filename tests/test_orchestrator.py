@@ -132,5 +132,7 @@ def test_tool_defs_includes_action_tools():
     assert "type" in names
     assert "key" in names
     assert "scroll" in names
-    assert "capture" in names
-    assert "watch" in names
+    assert "open" in names
+    assert "focus" in names
+    assert "apps" in names
+    assert "window" in names

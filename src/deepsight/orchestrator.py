@@ -102,7 +102,79 @@ ACTION_TOOL_DEFINITIONS = [
             },
         },
     ),
-]
+    ToolDefinition(
+        name="open",
+        description=(
+            "Launch or switch to an application by name. Uses `open -a`. "
+            "Examples: 'Terminal', 'Safari', 'Xcode', 'Finder', "
+            "'/Applications/SomeApp.app'. If the app is already running, "
+            "it is brought to front."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "application name (e.g. 'Terminal') or full path",
+                },
+            },
+            "required": ["name"],
+        },
+    ),
+    ToolDefinition(
+        name="focus",
+        description=(
+            "Bring a window to front by matching its title. Use `apps` "
+            "first to see window titles, then focus one. Example: "
+            "focus('Terminal') focuses the first Terminal window."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "window": {
+                    "type": "string",
+                    "description": "substring of the window title to focus",
+                },
+            },
+            "required": ["window"],
+        },
+    ),
+    ToolDefinition(
+        name="apps",
+        description=(
+            "List all visible running applications and their window "
+            "titles. Use this to discover what's open before deciding "
+            "which app or window to focus, click in, or capture."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {},
+        },
+    ),
+    ToolDefinition(
+        name="window",
+        description=(
+            "Resize or reposition a window. Coordinates are percent of "
+            "screen (0-100) matching click/locate convention. If no "
+            "'name' is given, operates on the frontmost window. "
+            "Examples: window(x=25, y=25, w=50, h=50) centers it; "
+            "window(name='Terminal', w=80, h=90) resizes it."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "optional window title substring to target",
+                },
+                "x": {"type": "number", "description": "left edge, % of screen width"},
+                "y": {"type": "number", "description": "top edge, % of screen height"},
+                "w": {"type": "number", "description": "width, % of screen width"},
+                "h": {"type": "number", "description": "height, % of screen height"},
+            },
+        },
+    ),
+    ]
 
 VisionBackendType = NativeVisionBackend
 
@@ -307,7 +379,7 @@ class Orchestrator:
             if result.wants_tools:
                 # execute all pending tool calls, then feed results back
                 tool_messages: list[dict[str, Any]] = []
-                action_names = {"click", "type", "key", "scroll"}
+                action_names = {"click", "type", "key", "scroll", "open", "focus", "apps", "window"}
                 for call in result.tool_calls:
                     tool_calls_total += 1
                     if call.name in action_names and self.computer is not None:
