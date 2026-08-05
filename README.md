@@ -11,6 +11,22 @@
 
 ---
 
+## For AI agents: install the skill in one command
+
+DeepSight ships as a **loadable agent skill**: procedural knowledge (setup, wiring, tool protocols, troubleshooting) that any agent can load on demand. Install it with one command — no user steps:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Reality-Shifting-Tech/deepsight/main/scripts/install-skill.sh | bash
+```
+
+That's it. The script detects the agent and installs into the right skills directory — Hermes (`~/.hermes/skills/`), Claude Code (`~/.claude/skills/`), Codex (`~/.codex/skills/`) — or an explicit `DEEPSIGHT_SKILLS_DIR`. No accounts, no API keys, no configuration required for the skill itself. A previous copy is preserved as `deepsight.old`, never deleted.
+
+After it runs, the agent should load the skill and follow its instructions (Hermes: `skill_view(name='deepsight')`; any agent: read the installed `SKILL.md`). It covers compiling the vision binary, reasoning-loop wiring, the 16-tool protocol, `auxiliary.vision` integration, and troubleshooting.
+
+Skill source of truth: `skill/deepsight/` in this repo. Offline install from a checkout: `cp -R skill/deepsight ~/.hermes/skills/`.
+
+---
+
 ## Agent Integration
 
 One command to set up deepsight from scratch:

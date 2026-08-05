@@ -55,7 +55,10 @@ bench/                 Cloud-streaming benchmark harness
 docs/                  Architecture docs, images
   images/              Hero, workflow, and demo screenshots for README
 tests/                 pytest suite
-scripts/              vision_eyes.swift — native Apple Vision binary source
+scripts/              vision_eyes.swift — native Apple Vision binary source;
+                      install-skill.sh — one-command agent-skill installer
+skill/deepsight/      Agent skill (SKILL.md + references/ + templates/) —
+                      source of truth for the loadable Hermes/Claude/Codex skill
 ```
 
 ## Tools
