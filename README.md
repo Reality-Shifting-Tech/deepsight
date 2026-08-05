@@ -9,6 +9,20 @@
 
 ![DeepSight capabilities](docs/images/capabilities.png)
 
+![DeepSight terminal demo](docs/images/terminal-demo.gif)
+
+---
+
+## Install from PyPI
+
+```bash
+pip install deepsight-vision
+deepsight setup        # compiles the vision binary (macOS) or verifies env (Windows)
+deepsight doctor       # confirms everything works
+```
+
+The `setup` command compiles `vision_eyes` from Swift on macOS (Xcode SDK required), creates a `.env` with defaults, and prints next steps. On Windows it detects the platform and uses PIL + optional Tesseract OCR. Or install from source with `uv sync` (see Agent Integration below).
+
 ---
 
 ## For AI agents: install the skill in one command
