@@ -47,3 +47,4 @@ scripts/vision_eyes
 
 # Lockfile (uv not pinned in this repo)
 uv.lock
+.env.local
