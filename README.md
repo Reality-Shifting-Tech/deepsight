@@ -7,13 +7,68 @@
 
 > **Give DeepSeek (or any text-only model) eyes and hands.** DeepSight connects your existing LLM setup to the real world — it can look at images you send, take screenshots of your desktop, read text on screen, click buttons, type into fields, open apps, and search the web to verify facts. All vision runs on-device: Apple Vision on macOS, PIL + optional Tesseract OCR on Windows. Zero tokens, zero GPU, no image data ever leaves your machine.
 
-![DeepSight architecture](docs/images/architecture.svg)
+![DeepSight capabilities](docs/images/capabilities.png)
+
+---
+
+## Agent Integration
+
+One command to set up deepsight from scratch:
+
+```bash
+git clone https://github.com/Reality-Shifting-Tech/deepsight.git
+cd deepsight
+uv sync
+uv run deepsight setup        # compiles binary (macOS) or verifies env (Windows)
+uv run deepsight doctor        # confirms everything works
+```
+
+That's it. The `setup` command compiles the vision binary (macOS), creates a `.env` file with defaults, and prints next steps. For Windows, it detects the platform automatically and uses PIL + optional Tesseract OCR instead.
+
+**Python integration (for agents):**
+
+```python
+from deepsight.backends import NativeVisionBackend, ReasoningBackend, \
+    ComputerUseBackend, SearchBackend
+from deepsight.orchestrator import Orchestrator
+from deepsight.config import get_settings
+
+settings = get_settings()
+vision = NativeVisionBackend(bin_path=settings.vision_bin)
+reasoning = ReasoningBackend(
+    base_url=settings.reasoning_base_url,
+    api_key=settings.reasoning_api_key,
+    model=settings.reasoning_model,
+)
+
+# Vision-only session
+agent = Orchestrator(vision=vision, reasoning=reasoning)
+result = agent.run("data:image/png;base64,...", "Describe this image")
+
+# With desktop automation (macOS) or Windows automation
+from deepsight.backends import ComputerUseBackend
+agent = Orchestrator(
+    vision=vision, reasoning=reasoning,
+    computer=ComputerUseBackend(),
+)
+result = agent.run("data:image/png;base64,...",
+    "Open Terminal, run 'npm run dev', capture the result")
+```
+
+On Windows, use `WindowsVisionBackend` instead of `NativeVisionBackend`:
+
+```python
+from deepsight.backends import WindowsVisionBackend
+vision = WindowsVisionBackend()
+```
 
 ---
 
 ## Features
 
 DeepSight exposes **16 tools** to the reasoning model, organized into four layers.
+
+![Tools overview](docs/images/tools-overview.png)
 
 ### 👁️ Vision tools — see the screen
 

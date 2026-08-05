@@ -85,11 +85,56 @@ def _doctor(args: argparse.Namespace) -> None:
     sys.exit(0 if all_ok else 1)
 
 
+def _setup(args: argparse.Namespace) -> None:  # noqa: ARG001
+    """One-command setup: compile binary (macOS) or verify env (Windows)."""
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    if sys.platform == "darwin":
+        print("compiling vision_eyes (Apple Vision binary)...")
+        sdk = "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk"
+        swift_src = os.path.join(repo_root, "scripts", "vision_eyes.swift")
+        bin_out = os.path.join(repo_root, "scripts", "vision_eyes")
+        if not os.path.exists(swift_src):
+            print(f"✗ source not found: {swift_src}")
+            sys.exit(1)
+        r = subprocess.run(
+            ["swiftc", "-target", "arm64-apple-macos14", "-o", bin_out, swift_src],
+            capture_output=True, text=True, timeout=120,
+            env={**os.environ, "SDKROOT": sdk},
+        )
+        if r.returncode != 0:
+            print(f"✗ compile failed: {r.stderr.strip()[:200]}")
+            sys.exit(1)
+        print(f"✓ compiled: {bin_out}")
+        print(f"  export DEEPSIGHT_VISION_BIN={bin_out}")
+    elif sys.platform == "win32":
+        print("Windows detected — no binary to compile.")
+        print("Optional: install Tesseract OCR for full text capabilities:")
+        print("  winget install UB-Mannheim.TesseractOCR")
+    else:
+        print(f"unsupported platform: {sys.platform}")
+        sys.exit(1)
+
+    # Suggest .env setup
+    env_path = os.path.join(repo_root, ".env")
+    if not os.path.exists(env_path):
+        with open(env_path, "w") as f:
+            f.write(f"# DeepSight configuration — see README for all options\n")
+            if sys.platform == "darwin":
+                f.write(f"DEEPSIGHT_VISION_BIN={os.path.join(repo_root, 'scripts', 'vision_eyes')}\n")
+        print(f"✓ created .env with defaults")
+    else:
+        print(f"  .env already exists (skipped)")
+
+    print()
+    print("next: uv run deepsight doctor")
+    print("      uv run deepsight describe path/to/image.jpg")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="deepsight",
-        description="Device-native vision: describe images with on-device Apple Vision. "
-        "No server required.",
+        description="Device-native vision toolkit for macOS and Windows.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -102,6 +147,9 @@ def main() -> None:
 
     doc = sub.add_parser("doctor", help="check native vision binary + reasoning connectivity")
     doc.set_defaults(func=_doctor)
+
+    setup = sub.add_parser("setup", help="one-command setup: compile binary, create .env, verify")
+    setup.set_defaults(func=_setup)
 
     args = parser.parse_args()
     args.func(args)

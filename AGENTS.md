@@ -6,19 +6,12 @@ quick-reference. Where the two overlap, CONTRIBUTING wins.
 
 ## What this is
 
-DeepSight is an MIT-licensed, device-native vision toolkit that turns any
-text-only LLM into a multimodal desktop agent. It provides **16 tools** across
+DeepSight is an MIT-licensed vision toolkit that turns any text-only LLM into
+a multimodal desktop agent. Works on **macOS** (Apple Vision, zero tokens)
+and **Windows** (PIL + optional Tesseract OCR). Provides **16 tools** across
 four layers: vision analysis (look, ocr, zoom, count, locate), live screen
 capture (capture, watch), web grounding (ground), and desktop automation
-(click, type, key, scroll, open, focus, apps, window). All vision is handled
-by a compiled Swift binary (`vision_eyes`) using Apple Vision — zero tokens,
-zero GPU, zero network. Desktop automation uses macOS `osascript` (built-in)
-or `cliclick` (recommended). Web grounding is optional, gated by
-`DEEPSIGHT_SEARCH_API_KEY`.
-
-Vision is always device-native. Action tools are local-only. The only network
-call is the optional reasoning backend (any OpenAI-compatible chat endpoint)
-and the optional Brave Search API for grounding.
+(click, type, key, scroll, open, focus, apps, window).
 
 ## Toolchain
 
